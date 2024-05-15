@@ -12,14 +12,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric.nn as gnn
 
-from ..sign_net.sign_net import SignNet
-from ..sign_net.transform import to_dense_list_EVD
 from .base_networks import (MLP, AverageTo2d, Bilinear, ConvBlock,
                             FillDiagonalsFromArray, LinearBlock, Symmetrize2D,
                             act2module, torch_eig, torch_mean_dist,
                             torch_triu_to_full)
-from .old_networks import *
 from .pyg_fns import WeightedGATv2Conv, WeightedSignedConv
+from .sign_net.sign_net import SignNet
+from .sign_net.transform import to_dense_list_EVD
 
 
 ## model functions ##

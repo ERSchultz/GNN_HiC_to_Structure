@@ -20,12 +20,15 @@ from pylib.utils.utils import load_import_log
 from utils import *
 
 ROOT = '/home/erschultz'
-assert osp.exists(ROOT), f'neet to set root directory: {ROOT}'
+if not osp.exists(ROOT):
+    print(f'import_contact_maps.py: root directory not found: {ROOT}'
+            f'\n\tUsing working directory: {os.getcwd()}')
+    ROOT = os.getcwd()
 
 def import_contactmap_straw(odir, hic_filename, chrom, start,
                             end, resolution, norm='NONE'):
     '''
-    Load .hic file with hicstraw and write to disk as y.npy. Experimental details
+    Load .hic file with hicstraw and write to disk as hic.npy. Experimental details
     are logged in odir/import.log.
 
     Inputs:
@@ -43,33 +46,24 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
     hic = hicstraw.HiCFile(hic_filename)
 
     m = int((end - start) / resolution)
-    y_arr = np.zeros((m, m))
-    output = []
+    hic_arr = np.zeros((m, m))
     for row in result:
         i = int((row.binX - start) / resolution)
         j = int((row.binY - start) / resolution)
         if i >= m or j >= m:
             continue
         try:
-            y_arr[i, j] = row.counts
-            y_arr[j, i] = row.counts
-            if multiHiCcompare:
-                output.append([chrom, row.binX, row.binY, row.counts])
+            hic_arr[i, j] = row.counts
+            hic_arr[j, i] = row.counts
         except Exception as e:
             print(e)
             print(row.binX, row.binY, row.counts, i, j)
 
-    if np.max(y_arr) == 0:
+    if np.max(hic_arr) == 0:
         print(f'{odir} had no reads')
         return
 
-    os.makedirs(odir, exit_ok = True)
-    with open(osp.join(odir, 'y_sparse.txt'), 'w') as f:
-        wr = csv.writer(f, delimiter = '\t')
-        wr.writerows(output)
-
-    m, _ = y_arr.shape
-
+    os.makedirs(odir, exist_ok = True)
     with open(osp.join(odir, 'import.log'), 'w') as f:
         if isinstance(chrom, str):
             chrom = chrom.strip('chr')
@@ -77,19 +71,21 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
         f.write(f'resolution={resolution}\nbeads={m}\nnorm={norm}\n')
         f.write(f'genome={hic.getGenomeID()}')
 
-    np.save(osp.join(odir, 'y.npy'), y_arr)
+    np.save(osp.join(odir, 'hic.npy'), hic_arr)
     print(f'{odir} done')
 
-def entire_chromosomes(hic_files, dataset, resolution=50000,
-                        ref_genome='hg19', chroms=range(1,23), jobs=15):
+def entire_chromosomes(hic_files, dataset, resolution=50000, ref_genome='hg19',
+                    chroms=range(1,23), jobs=15, plot=False):
+    data_folder = osp.join(ROOT, dataset)
+    os.makedirs(data_folder, exist_ok = True)
+
+    mapping = []
     for i, filename in enumerate(hic_files):
-        data_folder = osp.join(ROOT, dataset)
-        os.makedirs(data_folder, exist_ok = True)
-        odir = osp.join(ROOT, dataset, f'chroms_{i}')
+        cell_line = filename.split(os.sep)[-3]
+        odir = osp.join(ROOT, dataset, f'chroms_{cell_line}')
         os.makedirs(odir, exist_ok = True)
 
         chromsizes = bioframe.fetch_chromsizes(ref_genome)
-        mapping = []
         for i, chromosome in enumerate(chroms):
             i += 1 # switch to 1-based indexing
             start = 0
@@ -97,27 +93,44 @@ def entire_chromosomes(hic_files, dataset, resolution=50000,
             print(f'i={i}: chr{chromosome} {start}-{end}')
             sample_folder = osp.join(odir, f'chr{chromosome}')
             mapping.append((sample_folder, filename, chromosome, start,
-                            end, resolution, norm, multiHiCcompare))
+                            end, resolution))
 
-        with multiprocessing.Pool(jobs) as p:
-            p.starmap(import_contactmap_straw, mapping)
+    with multiprocessing.Pool(jobs) as p:
+        p.starmap(import_contactmap_straw, mapping)
 
-        for chr in chroms:
-            y = np.load(osp.join(odir, f'chr{chr}', 'y.npy'))
-            plot_matrix(y, osp.join(odir, f'chr{chr}', 'y.png'), vmax='mean')
+    if plot:
+        # plotting is slow and not parallel-ized
+        for i, filename in enumerate(hic_files):
+            cell_line = filename.split(os.sep)[-3]
+            odir = osp.join(ROOT, dataset, f'chroms_{cell_line}')
+            for chr in chroms:
+                hic = np.load(osp.join(odir, f'chr{chr}', 'hic.npy'))
+                plot_matrix(hic, osp.join(odir, f'chr{chr}', 'hic.png'), vmax='mean')
 
-def split_chromosomes(in_dataset, out_dataset, m, chroms=range(1,23), start_index=1,
-                        resolution=50000, ref_genome='hg19', seed=None,
-                        file = 'y.npy', scale=None):
+def split(in_dataset, out_dataset, m, chroms=range(1,23), start_index=1,
+                        ref_genome='hg19', scale=None):
+    '''
+    Splits whole-chromosome contact maps from in_dataset
+
+    Inputs:
+        in_dataset: directory of whole-chromosome contact maps
+                    (saved in in_dataset/chroms_<cell_line>)
+        out_dataset: directory to save split contact maps
+                    (saved to out_dataset/samples/sample<i>)
+        m: number of beads in split contact maps
+        chroms: list of chromosomes numbers
+        start_index: id of first sample
+        ref_genome: reference genome (to get chromosome sizes)
+        scale (float or None): Re-scales first off-diagonal of contact map to
+                    have value <scale? (None to not scale)
+    '''
     data_dir = osp.join('/home/erschultz', in_dataset)
     out_data_dir = osp.join('/home/erschultz', out_dataset)
-    if not osp.exists(out_data_dir):
-        os.mkdir(out_data_dir, mode=0o755)
+    os.makedirs(out_data_dir, exist_ok=True)
     samples_dir = osp.join(out_data_dir, 'samples')
-    if not osp.exists(samples_dir):
-        os.mkdir(samples_dir, mode=0o755)
+    os.makedirs(samples_dir, exist_ok=True)
 
-    cell_lines = ['50k']
+    cell_lines = [f.split('_')[1] for f in os.listdir(data_dir) if f.startswith('chroms_')]
 
     i = start_index
     chromsizes = bioframe.fetch_chromsizes(ref_genome)
@@ -125,16 +138,17 @@ def split_chromosomes(in_dataset, out_dataset, m, chroms=range(1,23), start_inde
         print(cell_line)
         for chrom in chroms:
             chrom_dir = osp.join(data_dir, f'chroms_{cell_line}/chr{chrom}')
-            y_file = osp.join(chrom_dir, file)
-            if y_file.endswith('.txt'):
-                y = np.loadtxt(y_file)
-            elif y_file.endswith('.npy'):
-                y = np.load(y_file)
-            size = len(y)
-            diag = y.diagonal() == 0
+            hic_file = osp.join(chrom_dir, 'hic.npy')
+            if hic_file.endswith('.txt'):
+                hic = np.loadtxt(hic_file)
+            elif hic_file.endswith('.npy'):
+                hic = np.load(hic_file)
+            size = len(hic)
+            diag = hic.diagonal() == 0
             ind = np.arange(0, len(diag))
 
             import_log = load_import_log(chrom_dir)
+            resolution = import_log['resolution']
 
             start = 0
             end = start + m
@@ -158,17 +172,21 @@ def split_chromosomes(in_dataset, out_dataset, m, chroms=range(1,23), start_inde
                     f.write(f'genome={import_log["genome"]}')
 
 
-                y_i = y[start:end,start:end]
+                hic_i = hic[start:end,start:end]
                 if scale is not None:
                     # rescale Hi-C map such that first off_diagional has mean value of 'scale'
-                    y_i = rescale_p_s_1(y_i, scale)
-                    np.fill_diagonal(y_i, 1)
-                np.save(osp.join(odir, 'y.npy'), y_i)
-                plot_matrix(y_i, osp.join(odir, 'y.png'), vmax='mean')
+                    hic_i = rescale_p_s_1(hic_i, scale)
+                    np.fill_diagonal(hic_i, 1)
+                np.save(osp.join(odir, 'hic.npy'), hic_i)
+                plot_matrix(hic_i, osp.join(odir, 'hic.png'), vmax='mean')
                 i += 1
                 start = end
                 end = start + m
 
+def main():
+    entire_chromosomes(ALL_FILES_in_situ, 'dataset_all_files')
+    split('dataset_all_files', 'dataset_all_files_512', 512,
+            scale=1e-1)
+
 if __name__ == '__main__':
-    entire_chromosomes_list(ALL_FILES_in_situ, 'dataset_all_files')
-    split('dataset_all_files', 'dataset_all_files_512', 512, file='y.npy', scale=1e-1)
+    main()

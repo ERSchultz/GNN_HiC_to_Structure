@@ -6,50 +6,26 @@ import torch
 import torch_geometric
 from torch.utils.data import DataLoader, Subset
 
-from .dataset_classes import DiagFunctions, Sequences, SequencesContacts
 from .networks import get_model
 from .pyg_dataset_classes import ContactsGraph
 
 
 ## model functions ##
-def load_saved_model(opt, verbose=True, throw=True):
+def load_saved_model(opt, model_path=None, verbose=True, throw=True):
     model = get_model(opt, verbose)
     model.to(opt.device)
-    model_name = osp.join(opt.ofile_folder, 'model.pt')
-    if osp.exists(model_name):
-        save_dict = torch.load(model_name, map_location=torch.device('cpu'))
+    if model_path is None:
+        model_path = osp.join(opt.ofile_folder, 'model.pt')
+    if osp.exists(model_path):
+        save_dict = torch.load(model_path, map_location=torch.device('cpu'))
         train_loss_arr = save_dict['train_loss']
         val_loss_arr = save_dict['val_loss']
         try:
             state_dict = save_dict['model_state_dict']
-            # for key in list(state_dict.keys()):
-                # if key.startswith('model.head_2'):
-                    # state_dict[key.replace('head_2', 'head_D2')] = state_dict.pop(key)
-
-                # starts = [1, 8, 15, 22]
-                # for module, start in zip([1, 3, 5, 7], starts):
-                #     for i in [0, 1, 2]:
-                #         j = start + 2*i
-                #         if key == f'model.module_{j}.weight':
-                #             state_dict[f'model.module_{module}.model.{i}.model.0.weight'] = state_dict.pop(key)
-                #         elif key == f'model.module_{j}.bias':
-                #             state_dict[f'model.module_{module}.model.{i}.model.0.bias'] = state_dict.pop(key)
-                #         elif key == f'model.module_{j+1}.weight':
-                #             state_dict[f'model.module_{module}.model.{i}.model.1.weight'] = state_dict.pop(key)
-                # if key.startswith('head_2.'):
-                #     state_dict[key.replace('head_2.', 'head_2.0.model.')]= state_dict.pop(key)
-
-                # if key.startswith('model.module_7'):
-                #     state_dict[key.replace('model.module_7', 'model.module_2')] = state_dict.pop(key)
-                # if key.startswith('model.module_14'):
-                #     state_dict[key.replace('model.module_14', 'model.module_4')] = state_dict.pop(key)
-                # if key.startswith('model.module_21'):
-                #     state_dict[key.replace('model.module_21', 'model.module_6')] = state_dict.pop(key)
-            # torch.save(save_dict, model_name)
             model.load_state_dict(state_dict)
             model.eval()
             if verbose:
-                print('Model is loaded: {}'.format(model_name), file = opt.log_file)
+                print(f'Model is loaded: {model_path}', file = opt.log_file)
         except Exception as e:
             print(e)
             print(state_dict.keys())
@@ -64,45 +40,32 @@ def load_saved_model(opt, verbose=True, throw=True):
 
 ## dataset functions ##
 def get_dataset(opt, names=False, minmax=False, verbose=True,
-                samples=None, sub_dir='samples'):
+                samples=None, sub_dir='samples', file_paths = None):
     opt.root = None
-    if opt.GNN_mode:
-        if opt.split_sizes is not None and -1 not in opt.split_sizes:
-            max_sample = np.sum(opt.split_sizes)
-        elif opt.max_sample is not None:
-            max_sample = opt.max_sample
-        else:
-            max_sample = float('inf')
-
-        dataset = ContactsGraph(opt.data_folder, opt.scratch, opt.root_name,
-                                opt.input_m, opt.y_preprocessing,
-                                opt.log_preprocessing, opt.kr, opt.rescale, opt.mean_filt,
-                                opt.preprocessing_norm, opt.min_subtraction,
-                                opt.use_node_features, opt.mlp_model_id,
-                                opt.sparsify_threshold, opt.sparsify_threshold_upper,
-                                opt.split_neg_pos_edges, opt.max_diagonal,
-                                opt.transforms_processed, opt.pre_transforms_processed,
-                                opt.output_mode, opt.crop, opt.log_file, verbose,
-                                max_sample, samples, sub_dir,
-                                opt.plaid_score_cutoff, opt.sweep_choices,
-                                opt.diag, opt.corr, opt.eig,
-                                opt.keep_zero_edges, opt.output_preprocesing,
-                                opt.bonded_path)
-        opt.root = dataset.root
-        print('\n'*3)
-    elif opt.autoencoder_mode and opt.output_mode == 'sequence':
-        dataset = Sequences(opt.data_folder, opt.crop, opt.x_reshape, names)
-    elif opt.model_type.upper() == 'MLP':
-        dataset = DiagFunctions(opt.data_folder, opt.crop, opt.preprocessing_norm,
-                                opt.y_preprocessing,
-                                opt.log_preprocessing, opt.y_zero_diag_count,
-                                opt.output_mode,
-                                names = names, samples = samples)
+    assert opt.GNN_mode
+    if opt.split_sizes is not None and -1 not in opt.split_sizes:
+        max_sample = np.sum(opt.split_sizes)
+    elif opt.max_sample is not None:
+        max_sample = opt.max_sample
     else:
-        dataset = SequencesContacts(opt.data_folder, opt.toxx, opt.toxx_mode,
-                                    opt.y_preprocessing, opt.preprocessing_norm,
-                                    opt.x_reshape, opt.ydtype, opt.y_reshape,
-                                    opt.crop, opt.min_subtraction, names, minmax)
+        max_sample = float('inf')
+
+    dataset = ContactsGraph(opt.data_folder, opt.scratch, opt.root_name,
+                            opt.input_m, opt.y_preprocessing,
+                            opt.log_preprocessing, opt.kr, opt.rescale, opt.mean_filt,
+                            opt.preprocessing_norm, opt.min_subtraction,
+                            opt.use_node_features, opt.mlp_model_id,
+                            opt.sparsify_threshold, opt.sparsify_threshold_upper,
+                            opt.split_neg_pos_edges, opt.max_diagonal,
+                            opt.transforms_processed, opt.pre_transforms_processed,
+                            opt.output_mode, opt.crop, opt.log_file, verbose,
+                            max_sample, samples, sub_dir,
+                            opt.plaid_score_cutoff, opt.sweep_choices,
+                            opt.diag, opt.corr, opt.eig,
+                            opt.keep_zero_edges, opt.output_preprocesing,
+                            opt.bonded_path, file_paths)
+    opt.root = dataset.root
+    print('\n'*3)
     return dataset
 
 def get_data_loaders(dataset, opt):

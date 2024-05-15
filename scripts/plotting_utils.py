@@ -14,30 +14,39 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse as sp
-import seaborn as sns
 import torch
 import torch.nn.functional as F
 import torch_geometric
+from pylib.utils.ArgparseConverter import ArgparseConverter
 from pylib.utils.DiagonalPreprocessing import DiagonalPreprocessing
-from pylib.utils.energy_utils import calculate_diag_chi_step
 from pylib.utils.plotting_utils import *
-from sklearn.decomposition import PCA
 from sklearn.metrics import mean_squared_error
 
-from .argparse_utils import (ArgparserConverter, finalize_opt, get_base_parser,
-                             get_opt_header, opt2list)
+from .argparse_utils import (finalize_opt, get_base_parser, get_opt_header,
+                             opt2list)
 from .clean_directories import clean_directories
 from .neural_nets.utils import get_data_loaders, get_dataset, load_saved_model
 
 
 #### Functions for plotting loss ####
-def plot_combined_models(modelType, ids, use_id_for_label=False):
-    path = osp.join('results', modelType)
+def plot_models_from_disk(ids, modelType='ContactGNNEnergy', use_id_for_label=False):
+    '''
+    Compare multiple models by loading from disk and plotting loss curve.
+
+    Inputs:
+        ids: list of model ids to plot
+        modelType: type of model being plotted
+        use_id_for_label: True to use model id as plot label
+                        (if False, label will be inferred from differences in
+                        model param options)
+    '''
+    path = osp.join('results', modelType) # models should be saved here
 
     dirs = []
     opts = []
     parser = get_base_parser()
     for id in ids:
+        # get argparse.ArgumentParser object (opt) for each model id
         id_path = osp.join(path, str(id))
         dirs.append(osp.join(id_path, 'model.pt'))
         txt_file = osp.join(id_path, 'argparse.txt')
@@ -45,14 +54,13 @@ def plot_combined_models(modelType, ids, use_id_for_label=False):
         opt = finalize_opt(opt, parser, local = True, debug = True)
         opts.append(opt)
 
-    imagePath = osp.join(path, f'{ArgparserConverter.list2str(ids)} combined')
-    if not osp.exists(imagePath):
-        os.mkdir(imagePath, mode = 0o755)
+    imagePath = osp.join(path, f'{ArgparseConverter.list2str(ids)} combined')
+    os.makedirs(imagePath, exist_ok = True)
 
     for log in [True, False]:
-        plotModelsFromDirs(dirs, imagePath, opts, log_y = log, use_id_for_label = use_id_for_label)
+        plot_models_from_disk_inner(dirs, imagePath, opts, log_y = log, use_id_for_label = use_id_for_label)
 
-def plotModelsFromDirs(dirs, imagePath, opts, log_y=False, use_id_for_label=False):
+def plot_models_from_disk_inner(dirs, imagePath, opts, log_y=False, use_id_for_label=False):
     # check that only one param is different
     opt_header = get_opt_header(opts[0].model_type, opts[0].GNN_mode)
     opt_lists = []
@@ -167,16 +175,18 @@ def plotModelsFromDirs(dirs, imagePath, opts, log_y=False, use_id_for_label=Fals
         plt.savefig(osp.join(imagePath, 'train_val_loss.png'))
     plt.close()
 
-def plotModelFromDir(dir, imagePath, op =None, log_y=False):
-    """Wrapper function for plotModelFromArrays given saved model."""
-    saveDict = torch.load(dir, map_location=torch.device('cpu'))
-    train_loss_arr = saveDict['train_loss']
-    val_loss_arr = saveDict['val_loss']
-    plotModelFromArrays(train_loss_arr, val_loss_arr, imagePath, opt, log_y)
-
-def plotModelFromArrays(train_loss_arr, val_loss_arr, imagePath, opt=None,
+def plot_loss(train_loss_arr, val_loss_arr, imagePath, opt=None,
                         log_y=False):
-    """Plots loss as function of epoch."""
+    """
+    Plots loss as function of epoch.
+
+    Inputs:
+        train_loss_arr: arry of training loss as function of epoch
+        val_loss_arr: array of validation loss as function of epoch
+        imagePath: path to save images to
+        opt (argparse.ArgumentParser object): parameter options for model
+        log_y: true to log transform y-axis
+    """
     plt.plot(np.arange(1, len(train_loss_arr)+1), train_loss_arr, label = 'Training')
     plt.plot(np.arange(1, len(val_loss_arr)+1), val_loss_arr, label = 'Validation')
 
@@ -239,213 +249,7 @@ def plotModelFromArrays(train_loss_arr, val_loss_arr, imagePath, opt=None,
         plt.savefig(osp.join(imagePath, 'train_val_loss.png'))
     plt.close()
 
-### Functions for plotting sequences ###
-def plot_seq_binary(seq, show=False, save=True, title=None, labels=None,
-                    x_axis=True, ofile='seq.png', split=False):
-    '''Plotting function for *non* mutually exclusive binary particle types'''
-    m, k = seq.shape
-    cmap = matplotlib.cm.get_cmap('tab10')
-    ind = np.arange(k) % cmap.N
-    colors = cmap(ind)
-
-    plt.figure(figsize=(6, 3))
-    j = 0
-    for i in range(k):
-        c = colors[j]
-        if split:
-            j += i % 2
-        else:
-            j += 1
-        x = np.argwhere(seq[:, i] == 1)
-        if labels is None:
-            label_i = i
-        else:
-            label_i = labels[i]
-        plt.scatter(x, np.ones_like(x) * i * 0.2, label = label_i, color = c, s=3)
-
-    ax = plt.gca()
-    # ax.axes.get_yaxis().set_visible(False)
-    if not x_axis:
-        ax.axes.get_xaxis().set_visible(False)
-    # else:
-    #     ax.set_xticks(range(0, 1040, 40))
-    #     ax.axes.set_xticklabels(labels = range(0, 1040, 40), rotation=-90)
-    ax.set_yticks([i*0.2 for i in range(k)])
-    ax.axes.set_yticklabels(labels = [f'Label {i}' for i in range(1,k+1)],
-                            rotation='horizontal', fontsize=14)
-    if title is not None:
-        plt.title(title, fontsize=16)
-    plt.xlabel('Distance', fontsize=16)
-    plt.tight_layout()
-    if save:
-        plt.savefig(ofile)
-    if show:
-        plt.show()
-    plt.close()
-
-def plot_seq_continuous(seq, show=False, save=True, title=None, ofile='seq.png',
-                    split=False):
-    m, k = seq.shape
-    cmap = matplotlib.cm.get_cmap('tab10')
-    ind = np.arange(k) % cmap.N
-    colors = cmap(ind)
-
-    plt.figure(figsize=(6, 3))
-    j=0
-    for i in range(k):
-        c = colors[j]
-        if split:
-            j += i % 2
-        else:
-            j += 1
-        plt.plot(np.arange(0, m), seq[:, i], label = f'Label {i+1}', color = c)
-        # i+1 to switch to 1-indexing
-
-    ax = plt.gca()
-    if title is not None:
-        plt.title(title, fontsize=16)
-    plt.legend(loc='upper right')
-    plt.xlabel('Distance', fontsize=16)
-    plt.ylabel('Label Value', fontsize=16)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    if save:
-        plt.savefig(ofile)
-    plt.close()
-
 ### Functions for analyzing model performance ###
-def analysisIterator(val_dataloader, model, opt, count, mode):
-    # format preprocessing title
-    if opt.y_preprocessing is not None:
-        preprocessing = opt.y_preprocessing.capitalize()
-    else:
-        preprocessing = 'None'
-    if opt.preprocessing_norm is not None:
-        preprocessing_norm = opt.preprocessing_norm.capitalize()
-    else:
-         preprocessing_norm = 'None'
-    upper_title = f'Y Preprocessing: {preprocessing}, Norm: {preprocessing_norm}'
-
-    # format loss title
-    loss_title = 'MSE Loss'
-
-    # get samples
-    samples = set()
-    for i, data in enumerate(val_dataloader):
-        if i >= 5:
-            continue
-        if opt.GNN_mode:
-            path = data.path[0]
-        else:
-            path = path[0]
-        sample = osp.split(path)[1]
-        sample_id = int(sample[6:])
-        samples.add(sample_id)
-
-    try:
-        dataset = get_dataset(opt, True, True, False, samples = samples)
-    except:
-        return
-    assert opt.GNN_mode
-    dataloader = torch_geometric.loader.DataLoader(dataset, batch_size = 1,
-                                shuffle = False, num_workers = opt.num_workers)
-
-
-    loss_arr = np.zeros(len(dataset))
-    for i, data in enumerate(dataloader):
-        # get yhat
-        data = data.to(opt.device)
-        if opt.output_mode.startswith('energy'):
-            y = data.energy
-            y = torch.reshape(y, (-1, opt.m, opt.m))
-        else:
-            y = data.y
-            y = torch.reshape(y, (-1, opt.m))
-        yhat = model(data)
-        path = data.path[0]
-
-
-        y = y.cpu().numpy()
-        yhat = yhat.cpu().detach().numpy()
-        if opt.output_mode.startswith('energy'):
-            y = y.reshape((opt.m, opt.m))
-            yhat = yhat.reshape((opt.m, opt.m))
-            if opt.output_preprocesing == 'log':
-                yhat = np.multiply(np.sign(yhat), np.exp(np.abs(yhat)) - 1)
-                y = np.multiply(np.sign(y), np.exp(np.abs(y)) - 1)
-        else:
-            y = y.reshape((-1))
-            yhat = yhat.reshape((-1))
-        loss =  mean_squared_error(yhat, y) # force mse loss
-
-        loss_arr[i] = loss
-        if opt.verbose:
-            print('y', y, np.max(y))
-            print('yhat', yhat, np.max(yhat))
-
-        if i < count:
-            left_path, sample = osp.split(path)
-            sample += '-' + mode
-            dataset = left_path.split(osp.sep)[-2]
-            subpath = osp.join(opt.ofile_folder, sample)
-            print(f'{dataset} {sample}: {loss}', file = opt.log_file)
-            if not osp.exists(subpath):
-                os.mkdir(subpath, mode = 0o755)
-
-            yhat_title = '{}\n{} ({}: {})'.format(upper_title, r'$\hat{S}$',
-                                                    loss_title, np.round(loss, 3))
-
-
-            if opt.output_mode.startswith('energy'):
-                v_max = np.nanpercentile(y, 99)
-                v_min = np.nanpercentile(y, 1)
-                v_max = max(v_max, v_min * -1)
-                v_min = v_max * -1
-
-                plot_matrix(yhat, osp.join(subpath, 'energy_hat.png'), vmin = v_min,
-                                vmax = v_max, cmap = 'blue-red', title = yhat_title)
-                np.savetxt(osp.join(subpath, 'energy_hat.txt'), yhat, fmt = '%.3f')
-
-                plot_matrix(y, osp.join(subpath, 'energy.png'), vmin = v_min,
-                                vmax = v_max, cmap = 'blue-red', title = r'$S$')
-                np.savetxt(osp.join(subpath, 'energy.txt'), y, fmt = '%.3f')
-
-                # plot dif
-                dif = y - yhat
-                plot_matrix(dif, osp.join(subpath, 'edif.png'), vmin = v_max,
-                                vmax = v_max, title = r'S - $\hat{S}$',
-                                cmap = 'blue-red')
-            elif opt.output_mode in {'diag_chi_continuous', 'diag_chi_step'}:
-                plot_diag_chi(None, subpath, y, 'ground_truth', False,
-                            'diag_chi_hat.png', yhat,
-                            title = f'MSE: {np.round(loss, 3)}',
-                            label = 'estimate')
-                plot_diag_chi(None, subpath, y, 'ground_truth', True,
-                            'diag_chi_hat_log.png', yhat,
-                            title = f'MSE: {np.round(loss, 3)}',
-                            label = 'estimate')
-
-                np.savetxt(osp.join(subpath, 'diag_chi.txt'), y, fmt = '%.3f')
-                np.savetxt(osp.join(subpath, 'diag_chi_hat.txt'), yhat, fmt = '%.3f')
-            else:
-                return
-
-            # tar subpath
-            os.chdir(opt.ofile_folder)
-            with tarfile.open(f'{dataset}_{sample}.tar.gz', 'w:gz') as f:
-                f.add(sample)
-            rmtree(sample)
-
-    mean_loss = np.round(np.mean(loss_arr), 3)
-    print(f'Loss: {mean_loss} +- {np.round(np.std(loss_arr), 3)}\n',
-        file = opt.log_file)
-
-    # cleanup
-    clean_directories(GNN_path = opt.root, ofile = opt.log_file)
-
-    return mean_loss
-
 def plotEnergyPredictions(val_dataloader, model, opt, count=5):
     print('Prediction Results:', file = opt.log_file)
     assert opt.output_mode.startswith('energy')
@@ -517,8 +321,7 @@ def plotEnergyPredictions(val_dataloader, model, opt, count=5):
         dataset = left_path.split(osp.sep)[-2]
         subpath = osp.join(opt.ofile_folder, sample)
         print(f'{dataset} {sample}: {loss}', file = opt.log_file)
-        if not osp.exists(subpath):
-            os.mkdir(subpath, mode = 0o755)
+        os.makedirs(subpath, exist_ok = True)
 
         yhat_title = '{}\n{} ({}: {})'.format(upper_title, r'$\hat{S}$',
                                                 loss_title, np.round(loss, 3))
@@ -546,8 +349,6 @@ def plotEnergyPredictions(val_dataloader, model, opt, count=5):
         # plot meanDist
         for arr, label in zip([y, yhat],['Ground Truth', 'GNN']):
             meanDist = DiagonalPreprocessing.genomic_distance_statistics(y, 'freq')
-            print(label, meanDist[:5])
-
             plt.plot(meanDist, label = label)
         plt.legend()
         plt.xscale('log')
@@ -601,39 +402,6 @@ def plotEnergyPredictions(val_dataloader, model, opt, count=5):
         file = opt.log_file)
 
     return mean_loss
-
-def downsamplingAnalysis(val_dataloader, model, opt, count=5):
-    print('Downsampling (200k) Results:', file = opt.log_file)
-    opt_copy = copy.copy(opt) # shallow copy only
-    if opt_copy.root_name is not None:
-        opt_copy.root_name += 'downsample'
-    if opt_copy.y_preprocessing.startswith('sweep'):
-        _, *y_preprocessing = opt_copy.y_preprocessing.split('_')
-        if isinstance(y_preprocessing, list):
-            y_preprocessing = '_'.join(y_preprocessing)
-    else:
-        y_preprocessing = opt_copy.y_preprocessing
-    opt_copy.y_preprocessing = 'sweep200000_' + y_preprocessing
-
-    downsample_loss = analysisIterator(val_dataloader, model, opt_copy, count,
-                                        'downsampling')
-
-    print('Original sampling (400k) Results:', file = opt.log_file)
-    opt_copy = copy.copy(opt) # shallow copy only
-    if opt_copy.root_name is not None:
-        opt_copy.root_name += 'regsample'
-    if opt_copy.y_preprocessing.startswith('sweep'):
-        _, *y_preprocessing = opt_copy.y_preprocessing.split('_')
-        if isinstance(y_preprocessing, list):
-            y_preprocessing = '_'.join(y_preprocessing)
-    else:
-        y_preprocessing = opt_copy.y_preprocessing
-    opt_copy.y_preprocessing = 'sweep400000_' + y_preprocessing
-
-    original_loss = analysisIterator(val_dataloader, model, opt_copy, count,
-                                    'regular')
-
-    return downsample_loss, original_loss
 
 #### Functions for plotting xyz files ####
 def plot_xyz(xyz, L, x=None, ofile=None, show=True, title=None, legend=True,
@@ -705,7 +473,6 @@ def plot_xyz_gif(xyz, x, dir, ofile = 'xyz.gif', order = None, colors = None,
                     title = None, legend = False, colors = colors)
 
     # build gif
-    # filenames = [osp.join(dir, f'ovito0{i}.png') for i in range(100, 900)]
     frames = []
     for filename in filenames:
         frames.append(imageio.imread(filename))
@@ -715,53 +482,6 @@ def plot_xyz_gif(xyz, x, dir, ofile = 'xyz.gif', order = None, colors = None,
     # remove files
     for filename in set(filenames):
         os.remove(filename)
-
-#### Functions for plotting diag chis and contact probability curves ####
-def plot_diag_chi(config, path, ref = None, ref_label = '', logx = False,
-                ofile = None, diag_chis_step = None, ylim = (None, None),
-                title = None, label = ''):
-    '''
-    config: config file
-    path: save file path
-    ref: reference parameters
-    ref_label: label for reference parameters
-    '''
-    if config is None:
-        assert diag_chis_step is not None
-    else:
-        diag_chis_step = calculate_diag_chi_step(config)
-
-    fig, ax = plt.subplots()
-    ax.plot(diag_chis_step, color = 'k', label = label)
-    ax.set_xlabel('Polymer Distance', fontsize = 16)
-    ax.set_ylabel('Diagonal Parameter', fontsize = 16)
-    if ref is not None:
-        if isinstance(ref, str) and osp.exists(ref):
-            ref = np.load(ref)
-
-        if isinstance(ref, np.ndarray):
-            ax.plot(ref, color = 'k', ls = '--', label = ref_label)
-            if ref_label != '':
-                plt.legend()
-
-    ax.set_ylim(ylim[0], ylim[1])
-    if logx:
-        ax.set_xscale('log')
-    if title is not None:
-        plt.title(title)
-
-    if ofile is None:
-        if logx:
-            ofile = osp.join(path, 'chi_diag_step_log.png')
-        else:
-            ofile = osp.join(path, 'chi_diag_step.png')
-    else:
-        ofile = osp.join(path, ofile)
-
-    plt.savefig(ofile)
-    plt.close()
-
-    return diag_chis_step
 
 ### Primary scripts ###
 def plot_matrix_gif(arr, dir, ofile = None, title = None, vmin = 0, vmax = 1,
@@ -775,7 +495,6 @@ def plot_matrix_gif(arr, dir, ofile = None, title = None, vmin = 0, vmax = 1,
                     maxVal, prcnt, cmap, x_ticks, y_ticks)
 
     # build gif
-    # filenames = [osp.join(dir, f'ovito0{i}.png') for i in range(100, 900)]
     frames = []
     for filename in filenames:
         frames.append(imageio.imread(filename))
@@ -788,6 +507,7 @@ def plot_matrix_gif(arr, dir, ofile = None, title = None, vmin = 0, vmax = 1,
 
 def plotting_script(model, opt, train_loss_arr = None, val_loss_arr = None,
                     dataset = None, samples = None):
+    '''Core plotting script for trained model.'''
     if model is None:
         model, train_loss_arr, val_loss_arr = load_saved_model(opt, verbose = False,
                                                                 throw = False)
@@ -800,8 +520,6 @@ def plotting_script(model, opt, train_loss_arr = None, val_loss_arr = None,
             dataloader_fn = torch.utils.data.DataLoader
         val_dataloader = dataloader_fn(dataset, batch_size = 1, shuffle = False,
                                         num_workers = opt.num_workers)
-
-
     else:
         opt.batch_size = 1 # batch size must be 1
         opt.shuffle = False # for reproducibility
@@ -810,19 +528,10 @@ def plotting_script(model, opt, train_loss_arr = None, val_loss_arr = None,
 
     imagePath = opt.ofile_folder
     print('#### Plotting Script ####', file = opt.log_file)
-    plotModelFromArrays(train_loss_arr, val_loss_arr, imagePath, opt)
-    plotModelFromArrays(train_loss_arr, val_loss_arr, imagePath, opt, True)
+    plot_loss(train_loss_arr, val_loss_arr, imagePath, opt)
+    plot_loss(train_loss_arr, val_loss_arr, imagePath, opt, True)
 
     loss_dict = {}
     if opt.plot_predictions:
         if opt.output_mode.startswith('energy'):
             loss = plotEnergyPredictions(val_dataloader, model, opt)
-        loss_dict['val'] = loss
-
-    if opt.plot:
-        d_loss, r_loss = downsamplingAnalysis(val_dataloader, model, opt)
-        loss_dict['downsample'] = d_loss
-        loss_dict['regular'] = r_loss
-
-    with open(osp.join(opt.ofile_folder, 'loss_analysis.json'), 'w') as f:
-        json.dump(loss_dict, f)

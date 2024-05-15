@@ -1,0 +1,3 @@
+Contains all functionality for synthetic data generation used to train the GNN. Running data_generation.py will call all necessary scripts to generate the synthetic dataset. Assumes experimental data was already downloaded via ../import_hic/import_contact_maps.py. You may want to change the ROOT directory of data_generation.py to match your file structure.
+
+First, fit_max_ent.py uses the maximum entropy optimization to obtain parameters for a experimental contact maps from the IMR90 cell line. Next, preprocess_max_ent.py fits distrubutions to the eigenvalues of the L matrix and fits a polynomial curve to the diagonal chi parameters of each simulation.

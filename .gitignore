@@ -1,1 +1,6 @@
 **/__pycache__/**
+results/**
+*.npy
+*.png
+*.pt
+*.txt

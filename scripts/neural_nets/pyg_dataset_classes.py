@@ -17,19 +17,39 @@ import torch_geometric.transforms
 import torch_geometric.utils
 from pylib.utils import epilib
 from pylib.utils.DiagonalPreprocessing import DiagonalPreprocessing
-from pylib.utils.energy_utils import calculate_D, calculate_S
+from pylib.utils.energy_utils import calculate_D
+from pylib.utils.load_utils import load_L, load_Y
 from scipy.ndimage import uniform_filter
 from skimage.measure import block_reduce
 from sklearn.cluster import KMeans
 from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_std
 
 from ..argparse_utils import finalize_opt, get_base_parser
-from ..knightRuiz import knightRuiz
-from ..load_utils import load_L, load_Y
-from ..utils import rescale_matrix
-from .dataset_classes import DiagFunctions, make_dataset
-from .networks import get_model
+from ..data_generation.utils.knightRuiz import knightRuiz
 
+
+def rescale_matrix(inp, factor, triu=True):
+    '''
+    Rescales input matrix by factor.
+    if inp is 1024x1024 and factor=2, out is 512x512
+    '''
+    if inp is None:
+        return None
+    assert len(inp.shape) == 2, f'must be 2d array not {inp.shape}'
+    m, _ = inp.shape
+    assert m % factor == 0, f'factor must evenly divide m {m}%{factor}={m%factor}'
+
+    if triu:
+        inp = np.triu(inp) # need triu to not double count entries
+    processed = block_reduce(inp, (factor, factor), np.sum) # sum-pool operation
+
+    if triu:
+        # need to make symmetric again
+        processed = np.triu(processed)
+        out = processed + np.triu(processed, 1).T
+        return out
+    else:
+        return processed
 
 def plaid_score(y, y_diag):
     def c(y, a, b):
@@ -64,7 +84,7 @@ class ContactsGraph(torch_geometric.data.Dataset):
                 plaid_score_cutoff=None, sweep_choices=[2,3,4,5],
                 diag=False, corr=False, eig=False,
                 keep_zero_edges=False, output_preprocesing=None,
-                bonded_root = None):
+                bonded_root = None, file_paths = None):
         '''
         Inputs:
             dirname: directory path to raw data (or list of paths)
@@ -131,9 +151,14 @@ class ContactsGraph(torch_geometric.data.Dataset):
         self.output_preprocesing = output_preprocesing
         self.bonded_root = bonded_root
 
+        if file_paths is None:
+            # used for model training
+            self.file_paths = make_dataset(self.dirname, maxSample = max_sample,
+                                            samples = samples, sub_dir = sub_dir)
+        else:
+            # used at implementation time
+            self.file_paths = file_paths
 
-        self.file_paths = make_dataset(self.dirname, maxSample = max_sample,
-                                        samples = samples, sub_dir = sub_dir)
         if plaid_score_cutoff is not None:
             for f in self.file_paths:
                 y, y_diag = load_Y(f)
@@ -206,7 +231,6 @@ class ContactsGraph(torch_geometric.data.Dataset):
             graph.pos_edge_index = pos_edge_index
             graph.neg_edge_index = neg_edge_index
             graph.mlp_model_id = self.mlp_model_id
-            graph.sweep = self.sweep
             graph.seqs = self.seqs
 
             # copy these temporarily
@@ -252,13 +276,8 @@ class ContactsGraph(torch_geometric.data.Dataset):
             else:
                 raise Exception(f'Unrecognized output {self.output}')
 
-            if self.output is not None and self.output_preprocesing is not None:
-                if 'center' in self.output_preprocesing:
-                    graph.energy -= torch.mean(graph.energy)
-                if 'norm' in self.output_preprocesing:
-                    graph.energy /= torch.max(torch.abs(graph.energy))
-                if 'log' in self.output_preprocesing:
-                    graph.energy = torch.sign(graph.energy) * torch.log(torch.abs(graph.energy)+1)
+            if self.output is not None and self.output_preprocesing == 'log':
+                graph.energy = torch.sign(graph.energy) * torch.log(torch.abs(graph.energy)+1)
 
             del graph.diag_chi_continuous
 
@@ -270,91 +289,43 @@ class ContactsGraph(torch_geometric.data.Dataset):
                                                             graph.num_nodes))
                 self.degree_list.append(deg)
 
-    def load_y(self, raw_folder):
-        '''Helper function to load raw contact map and apply normalization.'''
-        self.sweep = None
-        if self.y_preprocessing.startswith('sweeprand'):
-            _, *y_preprocessing = self.y_preprocessing.split('_')
-            if isinstance(y_preprocessing, list):
-                preprocessing = '_'.join(y_preprocessing)
-
-            id = int(osp.split(raw_folder)[1][6:])
-            rng = np.random.default_rng(seed = id)
-            sweep = rng.choice(self.sweep_choices, 1)[0]
-            self.sweep = int(sweep * 100000)
-
-            y_path = osp.join(raw_folder, f'data_out/contacts{self.sweep}.txt')
-            y_path2 = osp.join(raw_folder, f'production_out/contacts{self.sweep}.txt')
-            if osp.exists(y_path):
-                y = np.loadtxt(y_path).astype(np.float64)
-            elif osp.exists(y_path2):
-                y = np.loadtxt(y_path2).astype(np.float64)
-            else:
-                raise Exception(f"y_path missing: {y_path}, {y_path2}")
-
-        elif self.y_preprocessing.startswith('sweep'):
-            sweep, *y_preprocessing = self.y_preprocessing.split('_')
-            self.sweep = int(sweep[5:])
-            if isinstance(y_preprocessing, list):
-                preprocessing = '_'.join(y_preprocessing)
-
-            y_path = osp.join(raw_folder, f'data_out/contacts{self.sweep}.txt')
-            y_path2 = osp.join(raw_folder, f'production_out/contacts{self.sweep}.txt')
-            if osp.exists(y_path):
-                y = np.loadtxt(y_path).astype(np.float64)
-            elif osp.exists(y_path2):
-                y = np.loadtxt(y_path2).astype(np.float64)
-            else:
-                raise Exception(f"y_path missing: {y_path}, {y_path2}")
-        elif self.y_preprocessing.startswith('rescale'):
-            rescale, *y_preprocessing = self.y_preprocessing.split('_')
-            rescale = int(rescale[7:])
-            if isinstance(y_preprocessing, list):
-                preprocessing = '_'.join(y_preprocessing)
-
-            y = np.load(osp.join(raw_folder, 'y.npy')).astype(np.float64)
-            y = y * rescale
-        else:
-            y = np.load(osp.join(raw_folder, 'y.npy')).astype(np.float64)
-            preprocessing = self.y_preprocessing
-
-        return y, preprocessing
-
     def process_y(self, raw_folder):
         '''
         Helper function to load the appropriate contact map and apply any
         necessary preprocessing.
         '''
-        y, preprocessing = self.load_y(raw_folder)
+        y = np.load(osp.join(raw_folder, 'hic.npy')).astype(np.float64)
 
         # get bonded contact map
-        split = raw_folder.split(os.sep)
-        dir = '/' + osp.join(*split[:-3])
-        dataset = split[-3]
-        sample = split[-1][6:]
-        setup_file = osp.join(dir, dataset, f'setup/sample_{sample}.txt')
-        bonded_file1 = osp.join(raw_folder, self.bonded_root, 'y.npy')
-        bonded_file2 = osp.join(raw_folder, osp.split(self.bonded_root)[0],'y.npy')
-
         y_bonded = None
-        if osp.exists(setup_file):
-            found = False
-            with open(setup_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if line == '--diag_chi_experiment':
-                        exp_subpath = f.readline().strip()
-                        found = True
-            if not found:
-                raise Exception(f'--diag_chi_experiment missing from {setup_file}')
-            y_bonded_file = osp.join(dir, exp_subpath, 'y.npy')
-            assert osp.exists(y_bonded_file), y_bonded_file
-            y_bonded = np.load(y_bonded_file).astype(np.float64)
-        elif osp.exists(bonded_file1):
-            y_bonded = np.load(bonded_file1).astype(np.float64)
-        elif osp.exists(bonded_file2):
-            y_bonded = np.load(bonded_file2).astype(np.float64)
-        assert y_bonded is not None, f'{setup_file}, {bonded_file1}'
+        setup_file = None
+        if self.bonded_root is not None:
+            bonded_file1 = osp.join(self.bonded_root, 'hic.npy')
+            if osp.exists(bonded_file1):
+                y_bonded = np.load(bonded_file1).astype(np.float64)
+        else:
+            # assumes files located at ROOT/dataset/samples/sample<i>
+            split = raw_folder.split(os.sep)
+            dir = '/' + osp.join(*split[:-3])
+            dataset = split[-3]
+            sample = split[-1][6:]
+            setup_file = osp.join(dir, dataset, f'setup/sample_{sample}.txt')
+
+            if osp.exists(setup_file):
+                found = False
+                with open(setup_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line == '--diag_chi_experiment':
+                            exp_subpath = f.readline().strip()
+                            found = True
+                if not found:
+                    raise Exception(f'--diag_chi_experiment missing from {setup_file}')
+                y_bonded_file = osp.join(dir, exp_subpath, 'hic.npy')
+                assert osp.exists(y_bonded_file), y_bonded_file
+                y_bonded = np.load(y_bonded_file).astype(np.float64)
+
+        assert y_bonded is not None, f'{setup_file}, {self.bonded_root}'
 
         if self.mean_filt is not None:
             y = uniform_filter(y, self.mean_filt)
@@ -387,11 +358,11 @@ class ContactsGraph(torch_geometric.data.Dataset):
             y_bonded = knightRuiz(y_bonded)
 
         y_copy = np.copy(y)
-        if preprocessing == 'log':
+        if self.y_preprocessing == 'log':
             y = np.log(y+1)
             if y_bonded is not None:
                 y_bonded = np.log(y_bonded+1)
-        elif preprocessing == 'log_inf':
+        elif self.y_preprocessing == 'log_inf':
             with np.errstate(divide = 'ignore'):
                 # surpress warning, infs handled manually
                 y = np.log(y)
@@ -400,15 +371,15 @@ class ContactsGraph(torch_geometric.data.Dataset):
                 with np.errstate(divide = 'ignore'):
                     y_bonded = np.log(y_bonded)
                 y_bonded[np.isinf(y_bonded)] = np.nan
-        elif preprocessing is not None:
+        elif self.y_preprocessing is not None:
             raise Exception('Deprecated')
             # override y
             assert self.y_norm is None, f'y_norm={self.y_norm} not None, preprocessing={preprocessing}'
-            y_path = osp.join(raw_folder, f'y_{preprocessing}.npy')
+            y_path = osp.join(raw_folder, f'y_{self.y_preprocessing}.npy')
             if osp.exists(y_path):
                 y = np.load(y_path)
             else:
-                raise Exception(f"Unknown preprocessing: {preprocessing} or y_path missing: {y_path}")
+                raise Exception(f"Unknown preprocessing: {self.y_preprocessing} or y_path missing: {y_path}")
 
         if self.diag:
             # y is now log(contact map)
@@ -551,3 +522,49 @@ class ContactsGraph(torch_geometric.data.Dataset):
         plt.legend()
         plt.show()
         plt.close()
+
+def make_dataset(dir_list, minSample = 0, maxSample = float('inf'), verbose = False,
+                samples = None, prefix = 'sample', use_ids = True, sub_dir = 'samples'):
+    """
+    Make list data file paths.
+
+    Inputs:
+        dir_list: data source directory (or list of directories)
+        minSample: ignore samples < minSample
+        maxSample: ignore samples > maxSample
+        verbose: True for verbose mode
+        samples: list/set of samples to include, None for all samples
+        prefix: only folders starting with prefix will be considered
+
+    Outputs:
+        data_file_arr: list of data file paths
+    """
+    data_file_arr = []
+
+    if not isinstance(dir_list, list):
+        dir_list = [dir_list]
+
+    for dir in dir_list:
+        assert osp.exists(dir), f'{dir} does not exist'
+        samples_dir = osp.join(dir, sub_dir)
+        assert osp.exists(samples_dir), f'{samples_dir} does not exist'
+        l = len(prefix)
+        sample_files = [f for f in os.listdir(samples_dir) if prefix in f]
+
+        if use_ids:
+            sample_ids = [file[l:] for file in sample_files]
+            for sample_id in sorted(sample_ids):
+                if sample_id.isnumeric():
+                    sample_id_int = int(sample_id)
+                    if sample_id_int < minSample:
+                        continue
+                    if sample_id_int > maxSample:
+                        continue
+                if (samples is None) or (sample_id in samples) or (sample_id.isnumeric() and int(sample_id) in samples):
+                    data_file = osp.join(samples_dir, f'{prefix}{sample_id}')
+                    data_file_arr.append(data_file)
+        else:
+            for file in sample_files:
+                data_file_arr.append(osp.join(samples_dir, file))
+
+    return data_file_arr

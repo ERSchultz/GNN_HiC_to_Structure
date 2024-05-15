@@ -3,51 +3,14 @@ import os.path as osp
 import sys
 from shutil import rmtree
 
-
-def str2bool(v):
-    """
-    Helper function for argparser, converts str to boolean for various string inputs.
-    https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-
-    Inputs:
-        v: string
-    """
-    if isinstance(v, bool):
-       return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError(f'Boolean value expected, got {v}')
-
-def str2list(v, sep = '-'):
-    """
-    Helper function for argparser, converts str to list by splitting on sep.
-
-    Inputs:
-        v: string
-        sep: separator
-    """
-    if v is None:
-        return None
-    elif isinstance(v, str):
-        if v.lower() == 'none':
-            return None
-        elif v.lower() == 'empty':
-            return []
-        else:
-            result = [i for i in v.split(sep)]
-            return result
-    else:
-        raise argparse.ArgumentTypeError('str value expected.')
-
+from pylib.utils.ArgparseConverter import ArgparseConverter
 
 
 def clean_directories(data_folder=None, GNN_path = None,
                     GNN_file_name = None, ofile = sys.stdout):
+    AC = ArgparseConverter()
     parser = argparse.ArgumentParser(description='Simple parser', allow_abbrev=False)
-    parser.add_argument('--data_folder', type=str2list, default=data_folder,
+    parser.add_argument('--data_folder', type=AC.str2list, default=data_folder,
                         help='Location of data')
     parser.add_argument('--GNN_file_name', type=str, default=str(GNN_file_name),
                         help='name of file graph data was saved to')
@@ -56,7 +19,7 @@ def clean_directories(data_folder=None, GNN_path = None,
     parser.add_argument('--clean_scratch', action='store_true',
                         help='True clean scratch')
     parser.add_argument('--scratch', type=str, default=None)
-    parser.add_argument('--move_data_to_scratch', type=str2bool, default=False)
+    parser.add_argument('--move_data_to_scratch', type=AC.str2bool, default=False)
     opt, _ = parser.parse_known_args()
 
     if isinstance(opt.data_folder, list):
@@ -71,10 +34,10 @@ def clean_directories(data_folder=None, GNN_path = None,
         opt.GNN_path = osp.join(opt.scratch, opt.GNN_file_name)
 
     if osp.exists(opt.GNN_path):
-        print(f'Removing {opt.GNN_path}', file = ofile)
+        print(f'clean_directories.py: removing {opt.GNN_path}', file = ofile)
         rmtree(opt.GNN_path)
     else:
-        print(f'{opt.GNN_path} does not exist - cannot remove', file = ofile)
+        print(f'clean_directories.py: {opt.GNN_path} does not exist - cannot remove', file = ofile)
 
 
 if __name__ == '__main__':

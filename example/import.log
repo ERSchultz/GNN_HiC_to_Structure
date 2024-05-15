@@ -1,0 +1,8 @@
+https://hicfiles.s3.amazonaws.com/hiseq/imr90/in-situ/combined.hic
+chrom=1
+resolution=50000
+beads=512
+norm=NONE
+start=30000000
+end=55600000
+genome=hg19

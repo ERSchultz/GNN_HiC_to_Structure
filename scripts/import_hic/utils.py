@@ -34,7 +34,6 @@ ALL_FILES = [
             "https://hicfiles.s3.amazonaws.com/hiseq/hela/in-situ/combined.hic",
             "https://hicfiles.s3.amazonaws.com/hiseq/hap1/in-situ/combined.hic"
             ]
-            # "https://www.encodeproject.org/files/ENCFF675SJE/@@download/ENCFF675SJE.hic"  hg38 A549
 
 HCT116_RAD21KO = 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE104nnn/GSE104333/suppl/GSE104333_Rao-2017-treated_6hr_combined_30.hic'
 
@@ -53,7 +52,6 @@ HMEC_REPLICATES = [f'https://hicfiles.s3.amazonaws.com/hiseq/hmec/in-situ/HIC0{i
 ALL_FILES_NO_GM12878 = [f for f in ALL_FILES if 'gm12878' not in f]
 
 ALL_FILES_in_situ = [f for f in ALL_FILES if 'in-situ' in f]
-
 
 def intersect(region, bad_region):
     # region/2 is a tuple

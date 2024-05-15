@@ -16,6 +16,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms
+from pylib.utils.ArgparseConverter import ArgparseConverter
 from pylib.utils.DiagonalPreprocessing import DiagonalPreprocessing
 
 from .neural_nets.losses import *
@@ -31,7 +32,7 @@ def get_base_parser():
     '''Helper function that returns basic parser with all necessary arguments.'''
     parser = argparse.ArgumentParser(description='Base parser', fromfile_prefix_chars='@',
                                     allow_abbrev = False)
-    AC = ArgparserConverter()
+    AC = ArgparseConverter()
 
     # GNN pre-processing args
     parser.add_argument('--GNN_mode', type=AC.str2bool, default=False,
@@ -286,22 +287,18 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
     Helper function to processes command line arguments.
 
     Inputs:
-        opt (options): parsed command line arguments from parser.parse_args()
+        opt (argparse.ArgumentParser): parsed command line arguments from parser.parse_args()
         parser: instance of argparse.ArgumentParser() - used to re-parse if needed
         windows: True for windows file path
         local: True to override copy_data_to_scratch
         debug: True for debug mode (won't throw warning for resume_training)
 
     Outputs:
-        opt
+        opt (argparse.ArgumentParser): processed object
     '''
     # set up output folders/files
-    if windows:
-        model_type_root = 'C:/Users/Eric/OneDrive/Documents/Research/Coding'
-    else:
-        model_type_root = '/home/erschultz'
-    model_type_folder = osp.join(model_type_root, 'sequences_to_contact_maps', 'results',
-                                opt.model_type)
+    model_type_folder = osp.join('results', opt.model_type)
+    os.makedirs(model_type_folder, exist_ok=True)
 
     if opt.resume_training:
         assert opt.id is not None
@@ -410,8 +407,6 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
             criterion = F.binary_cross_entropy_with_logits
         elif loss == 'mse_center':
             criterion = mse_center
-        # elif opt.loss == 'mse_and_mse_center':
-        #     opt.criterion = mse_and_mse_center
         elif loss == 'mse_log':
             criterion = mse_log
         elif loss == 'mse_exp_norm':
@@ -508,7 +503,10 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
     return opt
 
 def process_transforms(opt):
-    '''Format pytorch geometric transformations based on opt.transforms and opt.pre_transfroms.'''
+    '''
+    Format pytorch geometric transformations based on opt.transforms and
+    opt.pre_transforms.
+    '''
     # collect these for printing purposes (see opt2list)
     opt.edge_transforms = []
     opt.node_transforms = []
@@ -823,27 +821,6 @@ def copy_data_to_scratch_inner(sample, data_folder, scratch_path, toxx,
             if not osp.exists(destination_file):
                 shutil.copyfile(source_file, destination_file)
 
-    # if y_preprocessing is not None and y_preprocessing.startswith('sweep'):
-    #     sweep, *y_preprocessing = y_preprocessing.split('_')
-    #     sweep = int(sweep[5:])
-    #     if isinstance(y_preprocessing, list):
-    #         y_preprocessing = '_'.join(y_preprocessing)
-    #
-    #     ifile = osp.join(sample_dir, f'data_out/contacts{sweep}.txt')
-    #     if osp.exists(ifile):
-    #         y = np.loadtxt(ifile)
-    #         if y_preprocessing == 'log':
-    #             y_to_move = np.log(y+1)
-    #         elif y_preprocessing == 'log_diag':
-    #             y_log = np.log(y+1)
-    #             meanDist = DiagonalPreprocessing.genomic_distance_statistics(y_log)
-    #             y_to_move = DiagonalPreprocessing.process(y_log, meanDist)
-    #         elif y_preprocessing == 'diag':
-    #             meanDist = DiagonalPreprocessing.genomic_distance_statistics(y)
-    #             y_to_move = DiagonalPreprocessing.process(y, meanDist)
-    #
-    #         np.save(osp.join(scratch_sample_dir, f'y_sweep{sweep}_{y_preprocessing}'), y_to_move)
-
 def argparse_setup(local = False):
     """Helper function set up parser."""
     parser = get_base_parser()
@@ -967,208 +944,3 @@ def get_opt_header(model_type, GNN_mode):
     opt_list.append('output_mode')
 
     return opt_list
-
-class ArgparserConverter():
-    @staticmethod
-    def str2None(v):
-        """
-        Helper function for argparser, converts str to None if str == 'none'
-
-        Returns the string otherwise.
-
-        Inputs:
-            v: string
-        """
-        if v is None:
-            return v
-        elif isinstance(v, str):
-            if v.lower() == 'none':
-                return None
-            else:
-                return v
-        else:
-            raise argparse.ArgumentTypeError('String value expected.')
-
-    @staticmethod
-    def str2int(v):
-        """
-        Helper function for argparser, converts str to int if possible.
-
-        Inputs:
-            v: string
-        """
-        if v is None:
-            return v
-        elif isinstance(v, str):
-            if v.lower() == 'none':
-                return None
-            elif v.lower() == 'nan':
-                return np.NaN
-            elif v.isnumeric():
-                return int(v)
-            elif v[0] == '-' and v[1:].isnumeric():
-                return int(v)
-            else:
-                raise argparse.ArgumentTypeError('none or int expected not {}'.format(v))
-        else:
-            raise argparse.ArgumentTypeError('String value expected.')
-
-    @staticmethod
-    def str2float(v):
-        """
-        Helper function for argparser, converts str to float if possible.
-
-        Inputs:
-            v: string
-        """
-        if v is None:
-            return v
-        elif isinstance(v, str):
-            if v.lower() == 'none':
-                return None
-            elif v.replace('.', '').replace('-', '').isnumeric():
-                return float(v)
-            elif 'e-' in v:
-                return float(v)
-            else:
-                raise argparse.ArgumentTypeError(f'none or float expected not {v}')
-        else:
-            raise argparse.ArgumentTypeError('String value expected.')
-
-    @staticmethod
-    def str2bool(v):
-        """
-        Helper function for argparser, converts str to boolean for various string inputs.
-        https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-
-        Inputs:
-            v: string
-        """
-        if isinstance(v, bool):
-           return v
-        if v.lower() in ('yes', 'true', 't', 'y', '1'):
-            return True
-        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-            return False
-        else:
-            raise argparse.ArgumentTypeError('Boolean value expected.')
-
-    def is_float(v) -> bool:
-        try:
-            float(v)
-            return True
-        except ValueError:
-            return False
-
-    @staticmethod
-    def str2list(v, sep = '-'):
-        """
-        Helper function for argparser, converts str to list by splitting on sep.
-        Empty string will be mapped to -1.
-
-        Example for sep = '-': "-i-j-k" -> [-1, i, j, k]
-
-        Inputs:
-            v: string
-            sep: separator
-        """
-        if v is None:
-            return None
-        elif isinstance(v, str):
-            if v.lower() == 'none':
-                return None
-            elif v.lower() == 'empty':
-                return []
-            else:
-                result = [i for i in v.split(sep)]
-                for i, val in enumerate(result):
-                    if val.isnumeric():
-                        result[i] = int(val)
-                    elif ArgparserConverter.is_float(val):
-                        result[i] = float(val)
-                    elif val == '':
-                        result[i] = -1
-                return result
-        else:
-            raise argparse.ArgumentTypeError('str value expected.')
-
-    @staticmethod
-    def str2list2D(v, sep1 = '\\', sep2 = '&'):
-        """
-        Helper function for argparser, converts str to list by splitting on sep1, then on sep2.
-
-        Example for sep1 = '\\', sep2 = '&': "i & j \\ k & l" -> [[i, j], [k, l]]
-
-        Inputs:
-            v: string (any spaces will be ignored)
-            sep: separator
-        """
-        if v is None:
-            return None
-        elif isinstance(v, str):
-            if v.lower() == 'none':
-                return None
-            elif v.lower() in {'nonlinear', 'polynomial'}:
-                return v.lower()
-            else:
-                v = v.replace(' ', '') # get rid of spaces
-                result = [i.split(sep2) for i in v.split(sep1)]
-                result = np.array(result, dtype=float)
-                return result
-        else:
-            raise argparse.ArgumentTypeError('str value expected.')
-
-    @staticmethod
-    def str2dtype(v):
-        """
-        Helper function for argparser, converts str to torch dtype.
-
-        Inputs:
-            v: string
-        """
-        if isinstance(v, str):
-            if v == 'float32':
-                return torch.float32
-            elif v == 'float64':
-                return torch.float64
-            elif v == 'int32':
-                return torch.int32
-            elif v == 'int64':
-                return torch.int64
-            else:
-                raise Exception('Unkown str: {}'.format(v))
-        else:
-            raise argparse.ArgumentTypeError('str value expected.')
-
-    def list2str(v, sep = '-'):
-        """
-        Helper function to convert list to string.
-
-        Inputs:
-            v: list
-        """
-        if isinstance(v, list):
-            return sep.join([str(i) for i in v])
-        else:
-            raise Exception('list value expected.')
-
-    @staticmethod
-    def float2str(v):
-        """
-        Helper function to convert float to str in si notation.
-
-        Inputs:
-            v: float
-        """
-        # TODO make this more robust
-        if isinstance(v, float):
-            vstr = "{:.1e}".format(v)
-            if vstr[2] == '0':
-                # converts 1.0e-04 to 1e-04
-                vstr = vstr[0:1] + vstr[3:]
-            if vstr[-2] == '0':
-                # converts 1e-04 to 1e-4
-                vstr = vstr[0:-2] + vstr[-1]
-        else:
-            raise Exception('float value expected.')
-        return vstr
