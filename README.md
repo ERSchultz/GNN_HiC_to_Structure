@@ -2,9 +2,9 @@
 
 We include a bash script (bin/create_environment.sh) to create an anaconda environment and install all necessary dependencies. A reference environment file is provided in environment.yml. # TODO clean up environment.
 
-We also require https://github.com/SorenKyhl/TICG-chromatin in order to run the simulation engine and for some utility functions. Currently, you need to use the Eric branch of TICG-chromatin for proper compatibility. # TODO
+We also require https://github.com/SorenKyhl/TICG-chromatin (master branch) in order to run the simulation engine and for some utility functions.
 
-You can run the following bash commands to install the Eric branch only within the GNN conda environment:
+You can run the following bash commands to install TICG-chromatin within the GNN conda environment:
 
 conda activate python3.9_pytorch1.9
 
