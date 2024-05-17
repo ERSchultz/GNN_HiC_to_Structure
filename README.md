@@ -10,7 +10,7 @@ conda activate python3.9_pytorch1.9
 
 cd ~/TICG-chromatin
 
-git checkout Eric
+git checkout master
 
 make all
 
