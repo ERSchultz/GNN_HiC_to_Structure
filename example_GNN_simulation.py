@@ -47,8 +47,8 @@ def setup_simulation():
     config['lmatrix_on'] = False
     config['dmatrix_on'] = False
     config['dump_frequency'] = 1000
-    config['nSweeps'] = 3000
-    config['nSweeps_eq'] = 1000
+    config['nSweeps'] = 300000
+    config['nSweeps_eq'] = 10000
     config['nbeads'] = m
     config["umatrix_filename"] = "umatrix.txt"
 
