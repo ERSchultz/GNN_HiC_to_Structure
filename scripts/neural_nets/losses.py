@@ -17,13 +17,6 @@ def mse_center(input, target):
     target_center = target - torch.mean(target)
     return F.mse_loss(input_center, target_center)
 
-def mse_and_mse_center(input, target, lambda1=1, lambda2=1, split_loss=False):
-    mse1 = lambda1 * F.mse_loss(input, target)
-    mse2 = lambda2 * mse_center(input, target)
-    if split_loss:
-        return mse1, mse2
-    return mse1 + mse2
-
 def mse_log(input, target, *args):
     input_log = torch.sign(input) * torch.log(torch.abs(input) + 1)
     target_log = torch.sign(target) * torch.log(torch.abs(target) + 1)
@@ -71,29 +64,6 @@ class MSE_EXP_NORM():
         target_exp_norm = MSE_EXP_NORM.normalize2(target_exp)
 
         return F.mse_loss(input_exp_norm, target_exp_norm)
-
-def mse_center_log(input, target):
-    input_center = input - torch.mean(input)
-    target_center = target - torch.mean(target)
-
-    return mse_log(input_center, target_center)
-
-def mse_log_and_mse_center_log(input, target, lambda1=1, lambda2=1, split_loss=False):
-    mse1 = lambda1 * mse_log(input, target)
-    mse2 = lambda2 * mse_center_log(input, target)
-    if split_loss:
-        return mse1, mse2
-    return mse1 + mse2
-
-def mse_kth_diagonal(input, target, k):
-    return F.mse_loss(torch.diagonal(input, k), torch.diagonal(target, k))
-
-def mse_top_k_diagonals(input, target, k):
-    loss = 0
-    for i in range(1, k+1):
-        loss += mse_kth_diagonal(input, target, i)
-
-    return loss / k
 
 class SCC_loss():
     '''
@@ -178,27 +148,6 @@ class MSE_log_scc():
             self.weights_toep = self.weights_toep.to(diff.get_device())
         error = torch.multiply(diff, self.weights_toep)
         return torch.mean(torch.square(error))
-
-class MSE_plaid_eig():
-    def __init__(self, log=False):
-        if log:
-            self.loss_fn = mse_log
-        else:
-            self.loss_fn = F.mse_loss
-
-    def __call__(self, input, target, eigenvectors):
-        # assume eigenvectors are N x k x m
-        N, k, m = eigenvectors.shape
-        assert k < m
-
-        left = torch.einsum('Nkm,Nmp->Nkp', eigenvectors, input)
-        input_result = torch.einsum('Nkp,Njp->Nkj', left, eigenvectors)
-
-        left = torch.einsum('Nkm,Nmp->Nkp', eigenvectors, target)
-        target_result = torch.einsum('Nkp,Njp->Nkj', left, eigenvectors)
-        target_result /= m
-
-        return self.loss_fn(input_result, target_result)
 
 class Combined_Loss():
     '''

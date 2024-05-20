@@ -622,14 +622,6 @@ def process_loss(opt):
             criterion = MSE_diag()
         elif loss == 'mse_log_diag':
             criterion = MSE_diag(log=True)
-        elif loss == 'mse_center_log':
-            criterion = mse_center_log
-        elif loss == 'mse_kth_diagonal':
-            criterion = mse_kth_diagonal
-            arg = opt.loss_k
-        elif loss == 'mse_top_k_diagonals':
-            criterion = mse_top_k_diagonals
-            arg = opt.loss_k
         elif loss == 'scc':
             criterion = SCC_loss(opt.m)
         elif loss.startswith('scc_exp'):
