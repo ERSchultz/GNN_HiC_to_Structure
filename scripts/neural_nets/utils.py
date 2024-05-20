@@ -109,9 +109,8 @@ def get_dataset(opt, verbose=True, samples=None, file_paths=None):
                             opt.sparsify_threshold, opt.sparsify_threshold_upper,
                             opt.transforms_processed, opt.pre_transforms_processed,
                             opt.output_mode, opt.log_file, verbose,
-                            opt.diag, opt.corr, opt.eig,
-                            opt.keep_zero_edges, opt.output_preprocesing,
-                            opt.bonded_path)
+                            opt.diag, opt.corr,
+                            opt.keep_zero_edges, opt.output_preprocesing)
     opt.root = dataset.root
     print('\n'*3)
     return dataset

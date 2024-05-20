@@ -242,7 +242,7 @@ def get_base_parser():
 
     return parser
 
-def finalize_opt(opt, parser, windows = False, debug = False, bonded_path=None):
+def finalize_opt(opt, parser, windows = False, debug = False):
     '''
     Helper function to processes command line arguments.
 
@@ -285,9 +285,6 @@ def finalize_opt(opt, parser, windows = False, debug = False, bonded_path=None):
             opt = parser.parse_args(args) # parse again
             # by inserting at position 1, the original arguments will override the txt file
             opt.id = id_copy
-
-    if opt.bonded_path is None:
-        opt.bonded_path = bonded_path
 
 
     opt.ofile_folder = osp.join(model_type_folder, str(opt.id))
@@ -581,7 +578,6 @@ def process_transforms(opt):
 
 def process_loss(opt):
     '''Format pytorch loss function based on opt.loss.'''
-    opt.eig = False # True if eig is needed for loss
     opt.loss = opt.loss.lower()
     loss_list = opt.loss.split('_and_')
     criterion_list = []
@@ -634,10 +630,6 @@ def process_loss(opt):
         elif loss == 'mse_top_k_diagonals':
             criterion = mse_top_k_diagonals
             arg = opt.loss_k
-        elif loss == 'mse_plaid_eig':
-            criterion = MSE_plaid_eig()
-            opt.diag = True
-            opt.eig = True
         elif loss == 'scc':
             criterion = SCC_loss(opt.m)
         elif loss.startswith('scc_exp'):
@@ -651,10 +643,6 @@ def process_loss(opt):
                 elif loss_str == 'norm':
                     norm = True
             criterion = SCC_loss(opt.m, True, K=K, clip_val=clip, norm=norm)
-        elif loss == 'mse_plaid_eig_log':
-            criterion = MSE_plaid_eig(True)
-            opt.diag = True
-            opt.eig = True
         else:
             raise Exception(f'Invalid loss: {repr(loss)}')
         criterion_list.append(criterion)

@@ -49,25 +49,25 @@ class ContactsGraph(torch_geometric.data.Dataset):
     def __init__(self, file_paths, scratch, root_name,
                 m, y_preprocessing,
                 kr=False, rescale=None, mean_filt=None,
-                y_norm='mean',
+                hic_normalization='mean',
                 use_node_features=True,
                 sparsify_threshold=None, sparsify_threshold_upper=None,
                 transform=None, pre_transform=None, output_mode='contact',
                 ofile=sys.stdout, verbose=True,
-                diag=False, corr=False, eig=False,
-                keep_zero_edges=False, output_preprocesing=None,
-                bonded_root = None):
+                diag=False, corr=False,
+                keep_zero_edges=False, output_preprocesing=None):
         '''
         Inputs:
+            file_paths: list of file_paths where data each sample is located
             scratch: path to scratch (used for root)
-            root_name: directory for loaded data
+            root_name: directory anme for saving/loading processed graphs
             m: number of particles/beads
             y_preprocessing: type of contact map preprocessing ('diag', None, etc)
             kr: True to balance with knightRuiz algorithm
             rescale: rescale contact map by factor of <rescale> (None to skip)
                     e.g. 2 will decrease size of contact mapy by 2
-            mean_filt: apply mean filter of width <mean_filt> (None to skip)
-            y_norm: type of normalization ('mean', 'max')
+            mean_filt: apply mean filter to contact map with width <mean_filt> (None to skip)
+            hic_normalization: type of normalization for contact map ('mean', 'max', 'mean_fill')
             use_node_features: True to use bead labels as node features
             sparsify_threshold: lower threshold for sparsifying contact map (None to skip)
             sparsify_threshold_upper: upper threshold for sparsifying contact map (None to skip)
@@ -76,7 +76,8 @@ class ContactsGraph(torch_geometric.data.Dataset):
             output_mode: output mode (None, 'contact_map', 'umatrix')
             ofile: where to print to if verbose == True
             verbose: True to print
-            diag: True if y_diag should be calculated
+            diag: True if y_diag should be calculated (used in some transforms)
+            corr: True if y_corr should be calcaulted (used in some transforms)
             keep_zero_edges: True to keep edges with 0 weight
             output_preprocesing: Type of preprocessing for prediction target
         '''
@@ -87,7 +88,7 @@ class ContactsGraph(torch_geometric.data.Dataset):
         self.kr = kr
         self.rescale = rescale
         self.mean_filt = mean_filt
-        self.y_norm = y_norm
+        self.hic_normalization = hic_normalization
         self.use_node_features = use_node_features
         self.sparsify_threshold = sparsify_threshold
         self.sparsify_threshold_upper = sparsify_threshold_upper
@@ -97,10 +98,8 @@ class ContactsGraph(torch_geometric.data.Dataset):
         self.verbose = verbose
         self.diag = diag
         self.corr = corr
-        self.eig = eig
         self.keep_zero_edges = keep_zero_edges
         self.output_preprocesing = output_preprocesing
-        self.bonded_root = bonded_root
 
 
         # set self.root - where processed graphs will be saved to
@@ -163,7 +162,6 @@ class ContactsGraph(torch_geometric.data.Dataset):
 
             graph.path = raw_folder
             graph.num_nodes = self.m
-            graph.seqs = self.seqs
 
             # copy these temporarily for use in pre_transforms
             graph.weighted_degree = self.weighted_degree
@@ -208,72 +206,25 @@ class ContactsGraph(torch_geometric.data.Dataset):
         '''
         y = np.load(osp.join(raw_folder, 'hic.npy')).astype(np.float64)
 
-        # get bonded contact map
-        y_bonded = None
-        setup_file = None
-        if self.bonded_root is not None:
-            bonded_file = osp.join(self.bonded_root, 'hic.npy')
-            if osp.exists(bonded_file):
-                y_bonded = np.load(bonded_file).astype(np.float64)
-        else:
-            # assumes files located at ROOT/dataset/samples/sample<i>
-            split = raw_folder.split(os.sep)
-            dir = '/' + osp.join(*split[:-3])
-            dataset = split[-3]
-            sample = split[-1][6:]
-            setup_file = osp.join(dir, dataset, f'setup/sample_{sample}.txt')
-
-            if osp.exists(setup_file):
-                found = False
-                with open(setup_file) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line == '--diag_chi_experiment':
-                            exp_subpath = f.readline().strip()
-                            found = True
-                if not found:
-                    raise Exception(f'--diag_chi_experiment missing from {setup_file}')
-                y_bonded_file = osp.join(dir, exp_subpath, 'hic.npy')
-                assert osp.exists(y_bonded_file), y_bonded_file
-                y_bonded = np.load(y_bonded_file).astype(np.float64)
-
-        if y_bonded is None:
-            print(f'Bonded contact map not found: {setup_file}, {self.bonded_root}')
-            self.contact_map_bonded = None
-        else:
-            self.contact_map_bonded = torch.tensor(y_bonded, dtype = torch.float32)
+        # contact_map_bonded is deprecated - used for some transforms
+        self.contact_map_bonded = None
 
         if self.mean_filt is not None:
             y = uniform_filter(y, self.mean_filt)
 
-        # get eigvecs from y before rescale
-        if self.eig:
-            seqs = epilib.get_pcs(epilib.get_oe(y), 10, normalize=True).T
-            # TODO hard-coded 10
-            self.seqs = torch.tensor(seqs, dtype=torch.float32)
-        else:
-            self.seqs = None
-
         if self.rescale is not None:
             y = rescale_matrix(y, self.rescale)
-            if y_bonded is not None:
-                y_bonded = rescale_matrix(y_bonded, self.rescale)
 
-        for y_i in [y, y_bonded]:
-            if y_i is None:
-                continue
-            if self.y_norm == 'max':
-                y_i /= np.max(y_i)
-            elif self.y_norm == 'mean':
-                y_i /= np.mean(np.diagonal(y_i))
-            elif self.y_norm == 'mean_fill':
-                y_i /= np.mean(np.diagonal(y_i))
-                np.fill_diagonal(y_i, 1)
+        if self.hic_normalization == 'max':
+            y /= np.max(y)
+        elif self.hic_normalization == 'mean':
+            y /= np.mean(np.diagonal(y))
+        elif self.hic_normalization == 'mean_fill':
+            y /= np.mean(np.diagonal(y))
+            np.fill_diagonal(y, 1)
 
         if self.kr:
             y = knightRuiz(y)
-            if y_bonded is not None:
-                y_bonded = knightRuiz(y_bonded)
 
 
         self.contact_map_diag = None
@@ -290,17 +241,11 @@ class ContactsGraph(torch_geometric.data.Dataset):
 
         if self.y_preprocessing == 'log':
             y = np.log(y+1)
-            if y_bonded is not None:
-                y_bonded = np.log(y_bonded+1)
         elif self.y_preprocessing == 'log_inf':
             with np.errstate(divide = 'ignore'):
                 # surpress warning, infs handled manually
                 y = np.log(y)
             y[np.isinf(y)] = np.nan
-            if y_bonded is not None:
-                with np.errstate(divide = 'ignore'):
-                    y_bonded = np.log(y_bonded)
-                y_bonded[np.isinf(y_bonded)] = np.nan
 
         # sparsify contact map for computational efficiency
         if self.sparsify_threshold is not None:
