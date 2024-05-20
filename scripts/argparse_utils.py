@@ -45,9 +45,6 @@ def get_base_parser():
                         help='remove all edges with weight < threshold (None to do nothing)')
     parser.add_argument('--sparsify_threshold_upper', type=AC.str2float,
                         help='remove all edges with weight < threshold (None to do nothing)')
-    parser.add_argument('--top_k', type=AC.str2int, default=None,
-                        help='filter to top k largest edges per node'
-                            '(None to do nothing) - DEPRECATED')
     parser.add_argument('--use_node_features', type=AC.str2bool, default=False,
                         help='True to use node features for GNN models')
     parser.add_argument('--use_edge_weights', type=AC.str2bool, default=True,
@@ -60,8 +57,6 @@ def get_base_parser():
     # pre-processing args
     parser.add_argument('--data_folder', type=AC.str2list, default='dataset_04_18_21',
                         help='Location of data')
-    parser.add_argument('--scratch', type=str, default='/scratch/midway2/erschultz',
-                        help='Location of scratch dir')
     parser.add_argument('--root_name', type=AC.str2None,
                         help='name of file to save graph data'
                             '(leave as None to create root automatically)'
@@ -74,12 +69,8 @@ def get_base_parser():
                         help='mode for toxx (default mean)')
     parser.add_argument('--y_preprocessing', type=AC.str2None,
                         help='type of pre-processing for contact map')
-    parser.add_argument('--sweep_choices', type=AC.str2list, default=[2,3,4,5],
-                        help='choices for num_sweeps for y_preprocessing=sweeprand')
     parser.add_argument('--y_zero_diag_count', type=int, default=0,
                         help='number of diagonals of y set to 0')
-    parser.add_argument('--log_preprocessing', type=AC.str2None,
-                        help='type of log transform input data (None to skip)')
     parser.add_argument('--output_preprocesing', type=AC.str2None,
                         help='type of preprocessing for output')
     parser.add_argument('--kr', type=AC.str2bool,
@@ -100,17 +91,8 @@ def get_base_parser():
                         help='torch data type for y')
     parser.add_argument('--y_reshape', type=AC.str2bool, default=True,
                         help='True if y should be considered a 2D image')
-    parser.add_argument('--crop', type=AC.str2list,
-                        help='size of crop to apply to image - format: <leftcrop-rightcrop>')
     parser.add_argument('--classes', type=int, default=10,
                         help='number of classes in percentile normalization')
-    parser.add_argument('--move_data_to_scratch', type=AC.str2bool, default=False,
-                        help='True to move data to scratch')
-    parser.add_argument('--use_scratch_parallel', type=AC.str2bool, default=False,
-                        help='True to move data in parallel (use_scratch must be True)')
-    parser.add_argument('--plaid_score_cutoff', type=AC.str2float,
-                        help='Threshold on accepted plaid scores for traing data'
-                            'Contact maps with score > cutoff will be ignored')
 
     # dataloader args
     parser.add_argument('--split_percents', type=AC.str2list,
@@ -243,10 +225,6 @@ def get_base_parser():
                         help='number of attention heads for relevant MPGNN')
     parser.add_argument('--concat_heads', type=AC.str2bool, default=True,
                         help='False to average instead of concat attention heads')
-    parser.add_argument('--max_diagonal', type=AC.str2int,
-                        help='Maximum diagonal to consider')
-    parser.add_argument('--mlp_model_id', type=AC.str2int,
-                        help='Model ID for MLP diagonal parameters')
     parser.add_argument('--bonded_path', type=AC.str2None,
                         help='argument in GridSize transform')
 
@@ -256,24 +234,6 @@ def get_base_parser():
     parser.add_argument('--hidden_sizes_list', type=AC.str2list,
                         help='List of hidden sizes for convolutional layers')
 
-    # UNet args
-    parser.add_argument('--nf', type=int, help='Number of filters')
-
-    # DeepC args
-    parser.add_argument('--dilation_list', type=AC.str2list,
-                        help='List of dilations for dilated convolutional layers')
-
-    # Akita args
-    parser.add_argument('--dilation_list_trunk', type=AC.str2list,
-                        help='List of dilations for dilated convolutional layers of trunk')
-    parser.add_argument('--bottleneck', type=int,
-                        help='Number of filters in bottleneck')
-                        # (must be <= hidden_size_dilation_trunk)
-    parser.add_argument('--dilation_list_head', type=AC.str2list,
-                        help='List of dilations for dilated convolutional layers of head')
-    parser.add_argument('--down_sampling', type=AC.str2None,
-                        help='type of down sampling to use')
-
     # post-processing args
     parser.add_argument('--plot', type=AC.str2bool, default=True,
                         help='True to plot result figures')
@@ -282,7 +242,7 @@ def get_base_parser():
 
     return parser
 
-def finalize_opt(opt, parser, windows = False, local = False, debug = False, bonded_path=None):
+def finalize_opt(opt, parser, windows = False, debug = False, bonded_path=None):
     '''
     Helper function to processes command line arguments.
 
@@ -290,7 +250,6 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
         opt (argparse.ArgumentParser): parsed command line arguments from parser.parse_args()
         parser: instance of argparse.ArgumentParser() - used to re-parse if needed
         windows: True for windows file path
-        local: True to override copy_data_to_scratch
         debug: True for debug mode (won't throw warning for resume_training)
 
     Outputs:
@@ -343,10 +302,8 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
     # configure other model params
     assert (opt.split_percents is None) ^ (opt.split_sizes is None)
 
-    opt.split_neg_pos_edges = False
-    if opt.message_passing.lower() == 'signedconv':
-        opt.split_neg_pos_edges = True
-    elif opt.message_passing.lower() == 'gat':
+
+    if opt.message_passing.lower() == 'gat':
         assert not opt.use_edge_weights
 
     # check mode
@@ -368,14 +325,262 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
         opt.input_m = int(opt.m / opt.rescale)
     else:
         opt.input_m = opt.m
-    if opt.crop is not None:
-        opt.m = opt.crop[1] - opt.crop[0]
-        opt.input_m = opt.crop[1] - opt.crop[0]
 
     # transforms
     process_transforms(opt)
 
     # configure loss
+    process_loss(opt)
+
+    # configure cuda
+    if opt.gpus > 1:
+        opt.cuda = True
+        opt.use_parallel = True
+        opt.gpu_ids = []
+        for ii in range(6):
+            try:
+                torch.cuda.get_device_properties(ii)
+                print(str(ii), file = opt.log_file)
+                opt.gpu_ids.append(ii)
+            except AssertionError:
+                print('Not ' + str(ii) + "!", file = opt.log_file)
+    elif opt.gpus == 1:
+        opt.cuda = True
+        opt.use_parallel = False
+    else:
+        opt.cuda = False
+        opt.use_parallel = False
+
+    if opt.cuda and not torch.cuda.is_available():
+        print('Warning: falling back to cpu', file = opt.log_file)
+        opt.cuda = False
+        opt.use_parallel = False
+
+    opt.device = torch.device('cuda' if opt.cuda else 'cpu')
+
+    # Set random seeds
+    torch.manual_seed(opt.seed)
+    if opt.cuda:
+        torch.cuda.manual_seed(opt.seed)
+
+    opt.log_file.close() # save any writes so far
+    opt.log_file = open(opt.log_file_path, 'a')
+    return opt
+
+def process_transforms(opt):
+    '''
+    Format pytorch geometric transformations based on opt.transforms and
+    opt.pre_transforms.
+    '''
+    # collect these for printing purposes (see opt2list)
+    opt.edge_transforms = []
+    opt.node_transforms = []
+    opt.edge_dim = 0 # keep track of dimension of edge attributes
+
+    # transforms
+    transforms_processed = []
+    for t_str in opt.transforms:
+        t_str = t_str.lower().split('_')
+        if t_str[0] == 'constant':
+            opt.node_transforms.append(torch_geometric.transforms.Constant())
+            transforms_processed.append(torch_geometric.transforms.Constant())
+            opt.node_feature_size += 1
+        elif t_str[0] == 'sparse':
+            opt.node_transforms.append(torch_geometric.transforms.ToSparseTensor())
+            transforms_processed.append(torch_geometric.transforms.ToSparseTensor())
+        else:
+            raise Exception("Invalid transform {}".format(t_str))
+    if len(transforms_processed) > 0:
+        opt.transforms_processed = torch_geometric.transforms.Compose(transforms_processed)
+    else:
+        opt.transforms_processed = None
+
+    # pre-transforms
+    processed = []
+    opt.diag = False # True if y_diag is needed for transform
+    opt.corr = False # True if correlation matrix is needed for transform
+    for t_str in opt.pre_transforms:
+        t_str = t_str.lower().split('_')
+        if t_str[0] == 'constant':
+            transform = torch_geometric.transforms.Constant()
+            opt.node_transforms.append(transform)
+            opt.node_feature_size += 1
+        elif t_str[0] == 'weightedldp':
+            transform = WeightedLocalDegreeProfile()
+            opt.node_transforms.append(transform)
+            if (opt.sparsify_threshold is None and
+                opt.sparsify_threshold_upper is None):
+                print('Warning: using LDP without any sparsification')
+            opt.node_feature_size += 5
+        elif t_str[0] == 'degree' or t_str[0] == 'weighteddegree':
+            if t_str[0] == 'weighteddegree':
+                weighted = True
+            else:
+                weighted = False
+            opt.node_feature_size += 1
+            max_value = None
+            for mode_str in t_str[1:]:
+                if mode_str == 'diag':
+                    opt.diag = True
+                if mode_str.startswith('max'):
+                    assert mode_str[3:].isnumeric()
+                    max_value = float(mode_str[3:])
+            transform = Degree(diag = opt.diag, max_val = max_value,
+                            weighted = weighted) # normalized by default
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'onehotdegree':
+            opt.node_feature_size += opt.m + 1
+            transform = torch_geometric.transforms.OneHotDegree(opt.m)
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'adj':
+            opt.node_feature_size += opt.m
+            processed.append(AdjTransform())
+            opt.node_transforms.append(AdjTransform())
+        elif t_str[0] == 'adjpca':
+            k = 8
+            diag = False
+            for mode_str in t_str[1:]:
+                if mode_str == 'diag':
+                    diag = True
+                    opt.diag = True
+                elif mode_str.isdigit():
+                    k = int(mode_str)
+            opt.node_feature_size += k
+            transform = AdjPCATransform(k, diag)
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'adjpcs':
+            opt.diag = True
+            norm = False
+            k = 8
+            for mode_str in t_str[1:]:
+                if mode_str == 'norm':
+                    norm = True
+                elif mode_str.isdigit():
+                    k = int(mode_str)
+            if not opt.use_sign_net and not opt.use_sign_plus:
+                opt.node_feature_size += k
+            transform = AdjPCs(k, norm, opt.use_sign_net or opt.use_sign_plus)
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'contactdistance':
+            assert opt.use_edge_attr or opt.use_edge_weights
+            if opt.use_edge_attr:
+                opt.edge_dim += 1
+            norm = False
+            bonded = False
+            rank = None
+            diag_norm = False
+            corr = False
+            for mode_str in t_str[1:]:
+                if mode_str == 'norm':
+                    norm = True
+                if mode_str == 'bonded':
+                    bonded = True
+                if mode_str.startswith('rank'):
+                    rank = mode_str[4:]
+                    assert rank.isnumeric()
+                    rank = int(rank)
+                if mode_str == 'diagnorm':
+                    opt.diag = True
+                    diag_norm = True
+                if mode_str == 'corr':
+                    opt.diag = True
+                    opt.corr = True
+                    corr = True
+            transform = ContactDistance(norm = norm,
+                                        convert_to_attr = opt.use_edge_attr,
+                                        bonded = bonded, diag_normalize = diag_norm,
+                                        corr = corr, rank = rank)
+            opt.edge_transforms.append(transform)
+        elif t_str[0] == 'meancontactdistance':
+            assert opt.use_edge_attr or opt.use_edge_weights
+            if opt.use_edge_attr:
+                opt.edge_dim += 1
+            norm = False
+            bonded = False
+            for mode_str in t_str[1:]:
+                if mode_str == 'norm':
+                    norm = True
+                if mode_str == 'bonded':
+                    bonded = True
+
+            transform = MeanContactDistance(norm = norm,
+                                        convert_to_attr = opt.use_edge_attr,
+                                        bonded = bonded)
+            opt.edge_transforms.append(transform)
+        elif t_str[0] == 'geneticdistance':
+            assert opt.use_edge_attr or opt.use_edge_weights
+            if opt.use_edge_attr:
+                opt.edge_dim += 1
+            log = False
+            log10 = False
+            norm = False
+            pos = False
+            d = 0
+            for mode_str in t_str[1:]:
+                if mode_str == 'log':
+                    log = True
+                if mode_str == 'log10':
+                    log10 = True
+                if mode_str == 'norm':
+                    norm = True
+                if mode_str.startswith('pos'):
+                    pos = True
+                    d = int(mode_str[3:])
+                    opt.edge_dim += d-1
+
+            transform = GeneticDistance(convert_to_attr = opt.use_edge_attr,
+                                        log = log, log10 = log10, norm = norm,
+                                        positional_encoding = pos, positional_encoding_d = d)
+            opt.edge_transforms.append(transform)
+        elif t_str[0] == 'geneticposition':
+            center = False
+            norm = False
+            for mode_str in t_str[1:]:
+                if mode_str == 'center':
+                    center = True
+                elif mode_str == 'norm':
+                    norm = True
+
+            opt.node_feature_size += 1
+            transform = GeneticPosition(center = center, norm = norm)
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'onehotgeneticposition':
+            transform = OneHotGeneticPosition()
+            opt.node_feature_size += opt.m
+            opt.node_transforms.append(transform)
+        elif t_str[0] == 'gridsize':
+            transform = GridSize(opt.bonded_path)
+            opt.node_transforms.append(transform)
+            opt.node_feature_size += 1
+        elif t_str[0] == 'diagonalparameterdistance':
+            assert opt.use_edge_attr or opt.use_edge_weights
+
+            if len(t_str) > 1 and t_str[1].isdigit():
+                mlp_id = int(t_str[1])
+            else:
+                mlp_id = None
+            if opt.use_edge_attr:
+                opt.edge_dim += 1
+
+            transform = DiagonalParameterDistance(convert_to_attr = opt.use_edge_attr,
+                                                id = mlp_id)
+            opt.edge_transforms.append(transform)
+        else:
+            raise Exception(f'Unrecognized transform: {t_str} for id={opt.id}')
+        processed.append(transform)
+
+    if len(processed) > 0:
+        opt.pre_transforms_processed = torch_geometric.transforms.Compose(processed)
+    else:
+        opt.pre_transforms_processed = None
+
+    # these are used in opt2list for making results table
+    opt.edge_transforms = sorted([repr(i) for i in opt.edge_transforms])
+    opt.node_transforms = sorted([repr(i) for i in opt.node_transforms])
+    # see pre_transforms_processed for more complete description of transforms
+
+def process_loss(opt):
+    '''Format pytorch loss function based on opt.loss.'''
     opt.eig = False # True if eig is needed for loss
     opt.loss = opt.loss.lower()
     loss_list = opt.loss.split('_and_')
@@ -462,370 +667,11 @@ def finalize_opt(opt, parser, windows = False, local = False, debug = False, bon
                                     [opt.lambda1, opt.lambda2, opt.lambda3],
                                     arg_list)
 
-    # move data to scratch
-    if opt.move_data_to_scratch and not local:
-        copy_data_to_scratch(opt)
-
-    # configure cuda
-    if opt.gpus > 1:
-        opt.cuda = True
-        opt.use_parallel = True
-        opt.gpu_ids = []
-        for ii in range(6):
-            try:
-                torch.cuda.get_device_properties(ii)
-                print(str(ii), file = opt.log_file)
-                opt.gpu_ids.append(ii)
-            except AssertionError:
-                print('Not ' + str(ii) + "!", file = opt.log_file)
-    elif opt.gpus == 1:
-        opt.cuda = True
-        opt.use_parallel = False
-    else:
-        opt.cuda = False
-        opt.use_parallel = False
-
-    if opt.cuda and not torch.cuda.is_available():
-        if not local:
-            print('Warning: falling back to cpu', file = opt.log_file)
-        opt.cuda = False
-        opt.use_parallel = False
-
-    opt.device = torch.device('cuda' if opt.cuda else 'cpu')
-
-    # Set random seeds
-    torch.manual_seed(opt.seed)
-    if opt.cuda:
-        torch.cuda.manual_seed(opt.seed)
-
-    opt.log_file.close() # save any writes so far
-    opt.log_file = open(opt.log_file_path, 'a')
-    return opt
-
-def process_transforms(opt):
-    '''
-    Format pytorch geometric transformations based on opt.transforms and
-    opt.pre_transforms.
-    '''
-    # collect these for printing purposes (see opt2list)
-    opt.edge_transforms = []
-    opt.node_transforms = []
-
-    if opt.log_preprocessing is not None:
-        default_split_value = 0
-    else:
-        default_split_value = 1
-    opt.edge_dim = 0
-
-    # transforms
-    transforms_processed = []
-    for t_str in opt.transforms:
-        t_str = t_str.lower().split('_')
-        if t_str[0] == 'constant':
-            opt.node_transforms.append(torch_geometric.transforms.Constant())
-            transforms_processed.append(torch_geometric.transforms.Constant())
-            opt.node_feature_size += 1
-        elif t_str[0] == 'sparse':
-            opt.node_transforms.append(torch_geometric.transforms.ToSparseTensor())
-            transforms_processed.append(torch_geometric.transforms.ToSparseTensor())
-        else:
-            raise Exception("Invalid transform {}".format(t_str))
-    if len(transforms_processed) > 0:
-        opt.transforms_processed = torch_geometric.transforms.Compose(transforms_processed)
-    else:
-        opt.transforms_processed = None
-
-    # pre-transforms
-    processed = []
-    opt.diag = False # True if y_diag is needed for transform
-    opt.corr = False # True if correlation matrix is needed for transform
-    for t_str in opt.pre_transforms:
-        t_str = t_str.lower().split('_')
-        if t_str[0] == 'constant':
-            transform = torch_geometric.transforms.Constant()
-            opt.node_transforms.append(transform)
-            opt.node_feature_size += 1
-        elif t_str[0] == 'weightedldp':
-            transform = WeightedLocalDegreeProfile()
-            opt.node_transforms.append(transform)
-            if (opt.top_k is None and
-                opt.sparsify_threshold is None and
-                opt.sparsify_threshold_upper is None):
-                print('Warning: using LDP without any sparsification')
-            opt.node_feature_size += 5
-        elif t_str[0] == 'degree' or t_str[0] == 'weighteddegree':
-            if t_str[0] == 'weighteddegree':
-                weighted = True
-            else:
-                weighted = False
-            opt.node_feature_size += 1
-            split = False
-            norm = True
-            max_value = None
-            split_value = default_split_value
-            for mode_str in t_str[1:]:
-                if mode_str == 'diag':
-                    opt.diag = True
-                if mode_str.startswith('split'):
-                    if len(mode_str) > 5:
-                        assert mode_str[5:].isnumeric()
-                        split_value = float(mode_str[5:])
-                    split = True
-                    opt.node_feature_size += 1
-                if mode_str.startswith('max'):
-                    assert mode_str[3:].isnumeric()
-                    max_value = float(mode_str[3:])
-            transform = Degree(split_val = split_value, diag = opt.diag,
-                            split_edges = split, max_val = max_value,
-                            weighted = weighted)
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'onehotdegree':
-            opt.node_feature_size += opt.m + 1
-            transform = torch_geometric.transforms.OneHotDegree(opt.m)
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'adj':
-            opt.node_feature_size += opt.m
-            processed.append(AdjTransform())
-            opt.node_transforms.append(AdjTransform())
-        elif t_str[0] == 'adjpca':
-            k = 8
-            diag = False
-            for mode_str in t_str[1:]:
-                if mode_str == 'diag':
-                    diag = True
-                    opt.diag = True
-                elif mode_str.isdigit():
-                    k = int(mode_str)
-            opt.node_feature_size += k
-            transform = AdjPCATransform(k, diag)
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'adjpcs':
-            opt.diag = True
-            norm = False
-            k = 8
-            for mode_str in t_str[1:]:
-                if mode_str == 'norm':
-                    norm = True
-                elif mode_str.isdigit():
-                    k = int(mode_str)
-            if not opt.use_sign_net and not opt.use_sign_plus:
-                opt.node_feature_size += k
-            transform = AdjPCs(k, norm, opt.use_sign_net or opt.use_sign_plus)
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'contactdistance':
-            assert opt.use_edge_attr or opt.use_edge_weights
-            if opt.use_edge_attr:
-                opt.edge_dim += 1
-            norm = False
-            bonded = False
-            rank = None
-            diag_norm = False
-            corr = False
-            for mode_str in t_str[1:]:
-                if mode_str == 'norm':
-                    norm = True
-                if mode_str == 'bonded':
-                    bonded = True
-                if mode_str.startswith('rank'):
-                    rank = mode_str[4:]
-                    assert rank.isnumeric()
-                    rank = int(rank)
-                if mode_str == 'diagnorm':
-                    opt.diag = True
-                    diag_norm = True
-                if mode_str == 'corr':
-                    opt.diag = True
-                    opt.corr = True
-                    corr = True
-            transform = ContactDistance(norm = norm,
-                                        split_edges = opt.split_neg_pos_edges,
-                                        convert_to_attr = opt.use_edge_attr,
-                                        bonded = bonded, diag_normalize = diag_norm,
-                                        corr = corr, rank = rank)
-            opt.edge_transforms.append(transform)
-        elif t_str[0] == 'meancontactdistance':
-            assert opt.use_edge_attr or opt.use_edge_weights
-            if opt.use_edge_attr:
-                opt.edge_dim += 1
-            norm = False
-            bonded = False
-            for mode_str in t_str[1:]:
-                if mode_str == 'norm':
-                    norm = True
-                if mode_str == 'bonded':
-                    bonded = True
-
-            transform = MeanContactDistance(norm = norm,
-                                        convert_to_attr = opt.use_edge_attr,
-                                        bonded = bonded)
-            opt.edge_transforms.append(transform)
-        elif t_str[0] == 'geneticdistance':
-            assert opt.use_edge_attr or opt.use_edge_weights
-            if opt.use_edge_attr:
-                opt.edge_dim += 1
-            log = False
-            log10 = False
-            norm = False
-            pos = False
-            d = 0
-            for mode_str in t_str[1:]:
-                if mode_str == 'log':
-                    log = True
-                if mode_str == 'log10':
-                    log10 = True
-                if mode_str == 'norm':
-                    norm = True
-                if mode_str.startswith('pos'):
-                    pos = True
-                    d = int(mode_str[3:])
-                    opt.edge_dim += d-1
-
-            transform = GeneticDistance(split_edges = opt.split_neg_pos_edges,
-                                        convert_to_attr = opt.use_edge_attr,
-                                        log = log, log10 = log10, norm = norm,
-                                        positional_encoding = pos, positional_encoding_d = d)
-            opt.edge_transforms.append(transform)
-        elif t_str[0] == 'geneticposition':
-            center = False
-            norm = False
-            for mode_str in t_str[1:]:
-                if mode_str == 'center':
-                    center = True
-                elif mode_str == 'norm':
-                    norm = True
-
-            opt.node_feature_size += 1
-            transform = GeneticPosition(center = center, norm = norm)
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'onehotgeneticposition':
-            transform = OneHotGeneticPosition()
-            opt.node_feature_size += opt.m
-            opt.node_transforms.append(transform)
-        elif t_str[0] == 'gridsize':
-            transform = GridSize(opt.bonded_path)
-            opt.node_transforms.append(transform)
-            opt.node_feature_size += 1
-        elif t_str[0] == 'diagonalparameterdistance':
-            assert opt.use_edge_attr or opt.use_edge_weights
-
-            if len(t_str) > 1 and t_str[1].isdigit():
-                mlp_id = int(t_str[1])
-            else:
-                mlp_id = None
-            if opt.use_edge_attr:
-                opt.edge_dim += 1
-
-            transform = DiagonalParameterDistance(split_edges = opt.split_neg_pos_edges,
-                                            convert_to_attr = opt.use_edge_attr, id = mlp_id)
-            opt.edge_transforms.append(transform)
-        else:
-            raise Exception(f'Unrecognized transform: {t_str} for id={opt.id}')
-        processed.append(transform)
-
-    if len(processed) > 0:
-        opt.pre_transforms_processed = torch_geometric.transforms.Compose(processed)
-    else:
-        opt.pre_transforms_processed = None
-
-    # these are used in opt2list for making results table
-    opt.edge_transforms = sorted([repr(i) for i in opt.edge_transforms])
-    opt.node_transforms = sorted([repr(i) for i in opt.node_transforms])
-    # see pre_transforms_processed for more complete description of transforms
-
-def copy_data_to_scratch(opt):
-    t0 = time.time()
-    # initialize scratch path
-    if not osp.exists(opt.scratch):
-        os.mkdir(opt.scratch, mode = 0o700)
-
-
-    datasets = [osp.split(d)[-1] for d in opt.data_folder]
-    data_folder_str ='-'.join(datasets)
-    scratch_path = osp.join(opt.scratch, data_folder_str)
-    if not osp.exists(scratch_path):
-        os.mkdir(scratch_path, mode = 0o700)
-
-    # initialize samples folder
-    if not osp.exists(osp.join(scratch_path, 'samples')):
-        os.mkdir(osp.join(scratch_path, 'samples'), mode = 0o700)
-
-    for data_folder in opt.data_folder:
-        # transfer summary files
-        for file in os.listdir(data_folder):
-            file_dir = osp.join(data_folder, file)
-            scratch_file_dir = osp.join(scratch_path, file)
-            if file.endswith('npy') and not osp.exists(scratch_file_dir):
-                shutil.copyfile(file_dir, scratch_file_dir)
-
-        # transfer sample data
-        samples = os.listdir(osp.join(data_folder, 'samples'))
-        if opt.use_scratch_parallel:
-            mapping = []
-            for sample in samples:
-                mapping.append([sample, data_folder, scratch_path, opt.toxx, opt.y_preprocessing, opt.output_mode])
-            with multiprocessing.Pool(opt.num_workers) as p:
-                 p.starmap(copy_data_to_scratch_inner, mapping)
-        else:
-            for sample in samples:
-                copy_data_to_scratch_inner(sample, data_folder, scratch_path, opt.toxx, opt.y_preprocessing, opt.output_mode)
-
-    opt.data_folder = [scratch_path]
-
-    tf = time.time()
-    delta_t = np.round(tf - t0, 0)
-    print(f"Took {delta_t} seconds to move data to scratch", file = opt.log_file)
-
-def copy_data_to_scratch_inner(sample, data_folder, scratch_path, toxx,
-                                y_preprocessing, output_mode):
-    sample_dir = osp.join(data_folder, 'samples', sample)
-    if not osp.isdir(sample_dir):
-        return
-
-    scratch_sample_dir = osp.join(scratch_path, 'samples', sample)
-    if not osp.exists(scratch_sample_dir):
-        os.mkdir(scratch_sample_dir, mode = 0o700)
-    for file in os.listdir(sample_dir):
-        move_file = False
-        # change to True to move file
-        # defaults to not moving file (saves space on scratch and move time)
-
-        if '.' not in file:
-            continue
-
-        fname, ftype = file.split('.')
-
-        if file == 'xx.npy' and toxx:
-            # only need xx.npy if toxx is True
-            move_file = True
-        elif file == 'y.npy' and (y_preprocessing is None or y_preprocessing.startswith('log') or output_mode.startswith('diag')):
-            move_file = True
-        elif y_preprocessing is not None and fname.endswith(y_preprocessing) and ftype == 'npy':
-            # need file corresponding to y_preprocessing
-            move_file = True
-        elif (file == 's.npy' or file == 'e.npy') and output_mode.startswith('energy'):
-            # only need s.npy if neural net output is energy
-            move_file = True
-        elif file == 'config.json' and output_mode.startswith('diag'):
-            # need to config to get diag_chi
-            move_file = True
-        elif file == 'params.log' and output_mode.startswith('diag_param'):
-            # need params log to get diag_chi params
-            move_file = True
-        elif file == 'diag_chis_continuous.npy' and (output_mode.startswith('diag') or output_mode.startswith('energy')):
-            # need to load this file regardless of which version of diag
-            move_file = True
-
-        if move_file:
-            source_file = osp.join(sample_dir, file)
-            destination_file = osp.join(scratch_sample_dir, file)
-            if not osp.exists(destination_file):
-                shutil.copyfile(source_file, destination_file)
-
-def argparse_setup(local = False):
+def argparse_setup():
     """Helper function set up parser."""
     parser = get_base_parser()
     opt = parser.parse_args()
-    return finalize_opt(opt, parser, local)
+    return finalize_opt(opt, parser)
 
 def save_args(opt):
     with open(osp.join(opt.ofile_folder, 'argparse.txt'), 'w') as f:
@@ -833,12 +679,14 @@ def save_args(opt):
             f.write(arg + '\n')
 
 def opt2list(opt):
-    '''Convert argparse.Namespace object to list.'''
+    '''
+    Convert argparse.Namespace object to list.
+    Note: does not exhaustively consider all otions.
+    '''
     data_folder = '-'.join([osp.split(d)[1] for d in opt.data_folder])
     opt_list = [opt.model_type, opt.id, data_folder, opt.pretrain_id,
                 opt.preprocessing_norm, opt.y_preprocessing, opt.output_preprocesing,
-                opt.mean_filt, opt.rescale, opt.kr, opt.min_subtraction,
-                opt.log_preprocessing, opt.crop]
+                opt.mean_filt, opt.rescale, opt.kr, opt.min_subtraction]
     opt_list.append(opt.split_percents if opt.split_percents is not None else opt.split_sizes)
     opt_list.extend([opt.shuffle, opt.batch_size, opt.num_workers, opt.n_epochs, opt.lr,
         opt.weight_decay, opt.w_reg,
@@ -849,7 +697,7 @@ def opt2list(opt):
         opt_list.extend([opt.use_node_features, opt.use_edge_weights, opt.use_edge_attr,
                         opt.node_transforms, opt.edge_transforms,
                         opt.sparsify_threshold, opt.sparsify_threshold_upper,
-                        opt.max_diagonal, opt.encoder_hidden_sizes_list,
+                        opt.encoder_hidden_sizes_list,
                         opt.edge_encoder_hidden_sizes_list,
                         opt.input_L_to_D, opt.input_L_to_D_mode,
                         opt.hidden_sizes_list, opt.message_passing,
@@ -862,29 +710,6 @@ def opt2list(opt):
             opt_list.append('sign_plus')
         else:
             opt_list.append(None)
-
-    if opt.model_type == 'simpleEpiNet':
-        opt_list.extend([opt.kernel_w_list, opt.hidden_sizes_list])
-    elif opt.model_type == 'UNet':
-        opt_list.extend([opt.nf, opt.toxx, opt.toxx_mode])
-    elif opt.model_type == 'Akita':
-        opt_list.extend([opt.kernel_w_list, opt.hidden_sizes_list, opt.dilation_list_trunk,
-                        opt.bottleneck, opt.dilation_list_head, opt.down_sampling])
-    elif opt.model_type == 'DeepC':
-        opt_list.extend([opt.kernel_w_list, opt.hidden_sizes_list, opt.dilation_list])
-    elif opt.model_type == 'test':
-        opt_list.extend([opt.kernel_w_list, opt.hidden_sizes_list, opt.dilation_list_trunk,
-                        opt.bottleneck, opt.dilation_list_head, opt.nf])
-    elif opt.model_type.startswith('GNNAutoencoder'):
-        opt_list.extend([opt.head_act, opt.parameter_sharing])
-    elif opt.model_type.startswith('ContactGNN'):
-        pass
-    elif opt.model_type == 'SequenceFCAutoencoder':
-        opt_list.extend([opt.hidden_sizes_list, opt.parameter_sharing])
-    elif opt.model_type == 'MLP':
-        opt_list.extend([opt.y_zero_diag_count, opt.hidden_sizes_list])
-    else:
-        raise Exception("Unknown model type: {}".format(opt.model_type))
 
     opt_list.append(opt.output_mode)
 
@@ -905,7 +730,7 @@ def get_opt_header(model_type, GNN_mode):
     '''Return list of strings corresponding to variables in argparse.Namespace object.'''
     opt_list = ['model_type', 'id',  'dataset', 'pretrain_id', 'preprocessing_norm',
         'y_preprocessing', 'output_preprocesing', 'mean_filt', 'rescale',
-        'kr', 'min_subtraction', 'log_preprocessing', 'crop', 'split', 'shuffle',
+        'kr', 'min_subtraction', 'split', 'shuffle',
         'batch_size', 'num_workers', 'n_epochs', 'lr', 'weight_decay', 'w reg', 'milestones',
         'gamma', 'loss', 'k', 'm',
         'seed', 'act', 'inner_act', 'head_act', 'out_act',
@@ -913,33 +738,11 @@ def get_opt_header(model_type, GNN_mode):
     if GNN_mode:
         opt_list.extend(['use_node_features','use_edge_weights', 'use_edge_attr',
                         'node_transforms', 'edge_transforms',
-                        'sparsify_threshold', 'sparsify_threshold_upper', 'max_diagonal',
+                        'sparsify_threshold', 'sparsify_threshold_upper',
                         'encoder_hidden_sizes', 'edge_encoder_hidden_sizes',
                         'input_L_to_D', 'input_L_to_D_mode',
                         'hidden_sizes', 'message_passing', 'update_hidden_sizes',
                         'head_architecture', 'head_hidden_sizes', 'sign_net'])
-    if model_type == 'simpleEpiNet':
-        opt_list.extend(['kernel_w_list', 'hidden_sizes_list'])
-    elif model_type == 'UNet':
-        opt_list.extend(['nf','toxx', 'toxx_mode'])
-    elif model_type == 'Akita':
-        opt_list.extend(['kernel_w_list', 'hidden_sizes_list', 'dilation_list_trunk',
-                        'bottleneck', 'dilation_list_head', 'down_sampling'])
-    elif model_type == 'DeepC':
-        opt_list.extend(['kernel_w_list', 'hidden_sizes_list', 'dilation_list'])
-    elif model_type == 'test':
-        opt_list.extend(['kernel_w_list', 'hidden_sizes_list', 'dilation_list_trunk',
-                        'bottleneck', 'dilation_list_head', 'nf'])
-    elif model_type == 'GNNAutoencoder':
-        opt_list.extend(['head_act', 'head_hidden_sizes_list'])
-    elif model_type.startswith('ContactGNN'):
-        pass
-    elif model_type == 'SequenceFCAutoencoder':
-        opt_list.extend(['hidden_sizes_list', 'parameter_sharing'])
-    elif model_type == 'MLP':
-        opt_list.extend(['y_zero_diag_count', 'hidden_sizes_list'])
-    else:
-        raise Exception("Unknown model type: {}".format(model_type))
 
     opt_list.append('output_mode')
 

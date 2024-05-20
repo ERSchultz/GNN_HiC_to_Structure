@@ -24,9 +24,8 @@ from .sign_net.transform import to_dense_list_EVD
 ## model functions ##
 def get_model(opt, verbose = True):
     assert opt.model_type.startswith('ContactGNN'), f'Invalid model type: {opt.model_type}'
-    GNNClass = ContactGNN
 
-    GNN_model = GNNClass(opt.input_m, opt.node_feature_size,
+    GNN_model = ContactGNN(opt.input_m, opt.node_feature_size,
                 opt.hidden_sizes_list,
                 opt.encoder_hidden_sizes_list, opt.edge_encoder_hidden_sizes_list,
                 opt.update_hidden_sizes_list,
@@ -576,7 +575,6 @@ class SignNetGNN(nn.Module):
         if verbose:
             print("#### ARCHITECTURE ####", file = ofile)
             print('Sign Net:\n', self.sign_net, '\n', file = ofile)
-
 
     def reset_parameters(self):
         self.sign_net.reset_parameters()

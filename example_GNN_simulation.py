@@ -19,7 +19,6 @@ import torch
 from pylib.Pysim import Pysim
 from pylib.utils.plotting_utils import plot_matrix
 from pylib.utils.utils import load_json, print_time
-
 from scripts.argparse_utils import finalize_opt, get_base_parser
 from scripts.clean_directories import clean_directories
 from scripts.data_generation.utils.setup_configs import setup_config
@@ -48,8 +47,8 @@ def setup_simulation():
     config['lmatrix_on'] = False
     config['dmatrix_on'] = False
     config['dump_frequency'] = 1000
-    config['nSweeps'] = 300000
-    config['nSweeps_eq'] = 10000
+    config['nSweeps'] = 3000
+    config['nSweeps_eq'] = 1000
     config['nbeads'] = m
     config["umatrix_filename"] = "umatrix.txt"
 
@@ -81,7 +80,7 @@ def run_GNN(model_path, argparse_path, m, dir, root, gnn_root, use_GPU=True, ver
         parser = get_base_parser()
         sys.argv = [sys.argv[0]] # delete args from get_params, otherwise gnn opt will try and use them
         opt = parser.parse_args(['@{}'.format(argparse_path)])
-        opt = finalize_opt(opt, parser, local = True, debug = True, bonded_path=root)
+        opt = finalize_opt(opt, parser, debug = True, bonded_path=root)
         opt.m = m
         opt.output_mode = None # don't need output, since only predicting
         opt.root_name = f'GNN{opt.id}' # need this to be unique if running in parallel

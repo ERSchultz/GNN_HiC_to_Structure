@@ -67,70 +67,29 @@ class Degree(BaseTransform):
         torch_geometric/transforms/target_indegree.html#TargetIndegree
     '''
     def __init__(self, norm = True, max_val = None, weighted = False,
-                split_edges = False, split_val = 0, diag = False):
+                diag = False):
         '''
         Inputs:
             norm: True to normalize degree by dividing by max_val
             max_val: value for norm, if None uses maximum degree
             weighted: True for weighted degree, False for count
-            split_edges: True to divide edges based on split_val
-            split_val: split value for split_edges
-            diag: TODO
+            diag: Use genomic distance normalized contact map
         '''
         self.norm = norm # bool
         self.max = max_val # float
         self.weighted = weighted # bool
-        self.split_edges = split_edges # bool
-        self.split_val = split_val # float
         self.diag = diag
-        # values less than split_val are one type of edge
-        # values greater than split_val are second type of edge
 
     def __call__(self, data):
         if self.weighted:
-            if self.split_edges:
-                if self.diag:
-                    ypos = torch.clone(data.contact_map_diag)
-                    yneg = torch.clone(data.contact_map_diag)
-                else:
-                    ypos = torch.clone(data.contact_map)
-                    yneg = torch.clone(data.contact_map)
-
-                ypos[ypos < self.split_val] = 0
-                pos_deg = torch.sum(ypos, axis = 1)
-                del ypos
-                yneg = torch.clone(data.contact_map)
-                yneg[yneg > self.split_val] = 0
-                neg_deg = torch.sum(yneg, axis = 1)
-                del yneg
-            else:
-                deg = data.weighted_degree
+            deg = data.weighted_degree
         else:
-            if self.split_edges:
-                if self.diag:
-                    pos_deg = degree((data.contact_map_diag > self.split_val).nonzero().t()[0], data.num_nodes)
-                    neg_deg = degree((data.contact_map_diag < self.split_val).nonzero().t()[0], data.num_nodes)
-                else:
-                    pos_deg = degree((data.contact_map > self.split_val).nonzero().t()[0], data.num_nodes)
-                    neg_deg = degree((data.contact_map < self.split_val).nonzero().t()[0], data.num_nodes)
-            else:
-                deg = degree(data.edge_index[0], data.num_nodes)
-                # deg = degree((data.contact_map).nonzero().t()[0], data.num_nodes)
-
+            deg = degree(data.edge_index[0], data.num_nodes)
 
         if self.norm:
-            if self.split_edges:
-                # print(pos_deg.max())
-                # print(neg_deg.max())
-                pos_deg /= (pos_deg.max() if self.max is None else self.max)
-                neg_deg /= (neg_deg.max() if self.max is None else self.max)
-            else:
-                deg /= (deg.max() if self.max is None else self.max)
+            deg /= (deg.max() if self.max is None else self.max)
 
-        if self.split_edges:
-            deg = torch.stack([pos_deg, neg_deg], dim=1)
-        else:
-            deg = torch.stack([deg], dim=1)
+        deg = torch.stack([deg], dim=1)
 
         if data.x is not None:
             data.x = data.x.view(-1, 1) if data.x.dim() == 1 else data.x
@@ -150,11 +109,7 @@ class Degree(BaseTransform):
         if self.weighted:
             repr += f'weighted={self.weighted}'
 
-        repr += f', split_edges={self.split_edges}'
-        if self.split_edges:
-            repr += f', split_val={self.split_val})'
-        else:
-            repr += ')'
+        repr += ')'
 
         return repr
 

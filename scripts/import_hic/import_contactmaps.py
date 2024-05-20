@@ -43,7 +43,6 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
     basepairs = f"{chrom}:{start}:{end}"
     print(basepairs, odir)
     result = hicstraw.straw("observed", norm, hic_filename, basepairs, basepairs, "BP", resolution)
-    hic = hicstraw.HiCFile(hic_filename)
 
     m = int((end - start) / resolution)
     hic_arr = np.zeros((m, m))
