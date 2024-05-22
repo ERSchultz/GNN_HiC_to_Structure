@@ -14,8 +14,7 @@ import torch_geometric.nn as gnn
 
 from .base_networks import (MLP, AverageTo2d, Bilinear, ConvBlock,
                             FillDiagonalsFromArray, LinearBlock, Symmetrize2D,
-                            act2module, torch_eig, torch_mean_dist,
-                            torch_triu_to_full)
+                            act2module, torch_eig, torch_mean_dist)
 from .pyg_fns import WeightedGATv2Conv, WeightedSignedConv
 from .sign_net.sign_net import SignNet
 from .sign_net.transform import to_dense_list_EVD
@@ -33,8 +32,7 @@ def get_model(opt, verbose = True):
                 opt.message_passing, opt.use_edge_weights or opt.use_edge_attr, opt.edge_dim,
                 opt.head_architecture, opt.head_architecture_2, opt.head_hidden_sizes_list,
                 opt.head_act, opt.use_bias, opt.rescale, opt.gated, opt.dropout,
-                opt.input_L_to_D, opt.input_L_to_D_mode,
-                opt.training_norm, opt.num_heads, opt.concat_heads, opt.output_clip,
+                opt.training_norm, opt.num_heads, opt.concat_heads,
                 opt.log_file, opt.verbose or verbose,
                 opt.use_sign_net, opt.use_sign_plus, opt.k)
 
@@ -61,8 +59,7 @@ class ContactGNN(nn.Module):
                 message_passing, use_edge_attr, edge_dim,
                 head_architecture_L, head_architecture_D, head_hidden_sizes_list,
                 head_act, use_bias, rescale, gated, dropout,
-                input_L_to_D, input_L_to_D_mode,
-                training_norm, num_heads, concat_heads, output_clip,
+                training_norm, num_heads, concat_heads,
                 ofile = sys.stdout, verbose = True,
                 sign_net = False, sign_plus = False, k = None):
         '''
@@ -80,7 +77,7 @@ class ContactGNN(nn.Module):
             message_passing (str): type of message passing algorithm to use
                                     {idendity, gcn, signedconv, z, gat, weighted_gat}
             use_edge_attr: True to use edge attributes/weights
-            edge_dim: 0 for edge weights, 1+ for edge_attr
+            edge_dim (int): 0 for edge weights, 1+ for edge_attr
             head_architecture_L: type of head architecture {None, fc, inner, bilinear, AverageTo2d.mode_options}
             head_architecture_D: type of head architecture {None, fc, inner, bilinear, AverageTo2d.mode_options}
             head_hidden_sizes_list: hidden sizes of head architecture
@@ -125,12 +122,9 @@ class ContactGNN(nn.Module):
         self.rescale = rescale
         self.gated = gated
         self.dropout = dropout
-        self.input_L_to_D = input_L_to_D
-        self.input_L_to_D_mode = input_L_to_D_mode.lower()
         self.training_norm = training_norm
         self.num_heads = num_heads
         self.concat_heads = concat_heads
-        self.output_clip = output_clip
         self.verbose = verbose
 
         ### Encoder Architecture ###
@@ -165,7 +159,6 @@ class ContactGNN(nn.Module):
                 input_edge_size = output_size
             self.edge_encoder = nn.Sequential(*encoder)
             self.edge_dim = output_size
-
 
         ### Trunk Architecture ###
         self.process_trunk(input_size)
@@ -214,6 +207,8 @@ class ContactGNN(nn.Module):
                                             edge_dim = self.edge_dim, edge_dim_MP = True,
                                             bias = self.use_bias)
                 model.append((module, fn_header))
+
+                # update input_size
                 if self.concat_heads:
                     input_size = output_size * self.num_heads
                 else:
@@ -238,6 +233,7 @@ class ContactGNN(nn.Module):
 
             self.model = gnn.Sequential('x, edge_index, edge_attr', model)
         elif self.message_passing == 'signedconv':
+            # Note that ContactsGraph no longer supports signedconv
             if self.use_edge_attr:
                 inputs = 'x, pos_edge_index, neg_edge_index, pos_edge_attr, neg_edge_attr'
             else:
@@ -253,8 +249,8 @@ class ContactGNN(nn.Module):
                                 fn_header))
                 input_size = output_size
                 input_size *= 2
-                # SignedConv convention that output_size is the size of the
-                # negative representation and positive representation respectively,
+                # SignedConv convention is that output_size specifies the size of the
+                # negative representation and positive representation separately,
                 # so the total length is 2 * output_size
 
                 if self.update_hidden_sizes_list is not None:
@@ -277,10 +273,6 @@ class ContactGNN(nn.Module):
                 raise Exception(f'Invalid training_norm: {training_norm}')
 
             self.model = gnn.Sequential(inputs, model)
-        elif self.message_passing == 'z':
-            # uses prior model to predict particle types
-            # designed for debugging
-            self.model = None
         else:
             raise Exception(f"Unkown message_passing {message_passing}")
 
@@ -312,16 +304,10 @@ class ContactGNN(nn.Module):
             head_list_a.append(ConvBlock(input_size, input_size, 3, padding = 1,
                                     activation = self.head_act, conv1d = True))
 
-        if 'triu' in split:
-            size = int(self.latent_size*(self.latent_size+1)/2)
-            init = torch.zeros(size)
-            self.sym = torch_triu_to_full
-        else:
-            init = torch.zeros((self.latent_size, self.latent_size))
-            torch.nn.init.xavier_normal_(init)
-            self.sym = Symmetrize2D()
-        if 'chi' not in split:
-            self.W = nn.Parameter(init)
+        init = torch.zeros((self.latent_size, self.latent_size))
+        torch.nn.init.xavier_normal_(init)
+        self.sym = Symmetrize2D()
+        self.W = nn.Parameter(init)
 
         if 'bilinear' in split:
             head_b = 'Bilinear'
@@ -379,14 +365,6 @@ class ContactGNN(nn.Module):
         else:
             input_size = input_size * self.m
 
-        if self.input_L_to_D:
-            if 'meandist' in self.input_L_to_D_mode:
-                input_size += int(self.m * self.rescale)
-            if 'eigval' in self.input_L_to_D_mode:
-                input_size += 10
-            if 'subtract' in self.input_L_to_D_mode:
-                self.fill = FillDiagonalsFromArray()
-
         if 'fc' in head_architecture:
             head_list_b.append(MLP(input_size, head_hidden_sizes_list, self.use_bias,
                                 self.head_act, self.out_act, dropout = self.dropout))
@@ -410,25 +388,8 @@ class ContactGNN(nn.Module):
 
         L_out = self.plaid_component(latent)
 
-        additional = None
-        if self.input_L_to_D:
-            # calculate mean along each diagonal of L_out
-            if 'meandist' in self.input_L_to_D_mode and 'eigval' in self.input_L_to_D_mode:
-                meanDist = torch_mean_dist(L_out)
-                eig_vals = torch_eig(L_out, 10)
-                additional = torch.cat((meanDist, eig_vals), 1)
-            elif 'meandist' in self.input_L_to_D_mode:
-                additional = torch_mean_dist(L_out)
-            elif 'eigval' in self.input_L_to_D_mode:
-                additional = torch_eig(L_out, 10)
-            elif 'subtract' in self.input_L_to_D_mode:
-                meanDist = torch_mean_dist(L_out)
-                L_meanDist = self.fill(meanDist)
-            else:
-                raise Exception(f'{self.input_L_to_D_mode} not recognized')
-        D_out = self.diagonal_component(latent, additional)
-        if self.input_L_to_D and 'subtract' in self.input_L_to_D_mode:
-            D_out -= L_meanDist
+        D_out = self.diagonal_component(latent)
+
 
         if L_out is None:
             return D_out
@@ -442,15 +403,12 @@ class ContactGNN(nn.Module):
             print(L_out.shape, D_out.shape)
             raise
 
-        if self.output_clip is not None:
-            S_out[S_out > self.output_clip] = self.output_clip
-            S_out[S_out < -self.output_clip] = -self.output_clip
-
         del L_out; del D_out
         torch.cuda.empty_cache()
         return S_out
 
     def latent(self, graph, additional_x):
+        '''Compute forward pass for node/edge encoders and message passing.'''
         if self.node_encoder is not None:
             x = self.node_encoder(graph.x)
         else:
@@ -469,15 +427,10 @@ class ContactGNN(nn.Module):
         else:
             edge_attr = graph.edge_attr
 
-
         if self.message_passing == 'identity':
             latent = x
         elif self.message_passing in {'gcn', 'transformer', 'gat', 'weighted_gat'}:
-            # print('x', x)
-            # print('graph.edge_index', graph.edge_index)
-            # print('edge_attr', edge_attr)
             latent = self.model(x, graph.edge_index, edge_attr)
-            # print('latent', latent)
         elif self.message_passing == 'signedconv':
             if self.use_edge_attr:
                 latent = self.model(x, graph.pos_edge_index, graph.neg_edge_index,
@@ -487,11 +440,13 @@ class ContactGNN(nn.Module):
 
         return latent
 
-    def diagonal_component(self, latent, additional=None):
+    def diagonal_component(self, latent):
+        '''Compute forward pass for diagonal (genomic distance) component.'''
         _, output_size = latent.shape
         if self.head_architecture_D is None:
             return none
-        elif 'fc' in self.head_architecture_D:
+
+        if 'fc' in self.head_architecture_D:
             if self.head_D is not None:
                 latent = latent.reshape(self.batch_size, self.m, output_size)
                 latent = latent.permute(0, 2, 1) # permute to combine over m index
@@ -500,11 +455,7 @@ class ContactGNN(nn.Module):
             else:
                 D_out = torch.clone(latent)
             D_out = D_out.reshape(self.batch_size, -1)
-            if additional is not None:
-                # additional is shape Nxm
-                D_out = self.head_D2(torch.cat((D_out, additional), 1))
-            else:
-                D_out = self.head_D2(D_out)
+            D_out = self.head_D2(D_out)
         elif self.head_architecture_D in self.to2D.mode_options:
             latent = latent.reshape(self.batch_size, self.m, output_size)
             latent = latent.permute(0, 2, 1) # permute to combine over m index
@@ -524,6 +475,7 @@ class ContactGNN(nn.Module):
         return D_out
 
     def plaid_component(self, latent):
+        '''Compute forward pass for plaid component.'''
         _, output_size = latent.shape
         if self.head_architecture_L is None:
             return None
@@ -538,25 +490,24 @@ class ContactGNN(nn.Module):
             L_out = torch.clone(latent)
 
         if self.head_L2 == 'Inner':
+            # compute inner product as LL^T
             L_out = torch.einsum('nik, njk->nij', L_out, L_out)
         elif self.head_L2 == 'Bilinear':
-            # if 'chi' in self.head_architecture_L:
-            #     latent = latent.reshape(-1, self.m * output_size)
-            #     self.W = self.head_L3(latent)
-            #     L_out = latent.reshape(-1, self.m, output_size)
-
+            # compute bilinear function LWL^T where W is learned
             if 'asym' in self.head_architecture_L:
                 L_out = torch.einsum('nik,njk->nij', L_out @ self.W, L_out)
             else:
-                W = self.sym(self.W)
+                W = self.sym(self.W) # ensure W is symmetric
                 if len(W.shape) == 2:
                     left = torch.einsum('nij,jk->nik', L_out, W)
                 elif len(W.shape) == 3:
                     left = torch.einsum('nij,njk->nik', L_out, W)
                 L_out = torch.einsum('nik,njk->nij', left, L_out)
 
-
         if self.rescale is not None:
+            # upscale L_out by factor of self.rescale
+            # Typically, GNN is run with input contact map at 100kb resolution,
+            # but predicts parameters for 50kb resolution simulatin (rescale=2)
             L_out = torch.unsqueeze(L_out, 1)
             m_new = int(self.m * self.rescale)
             L_out = F.interpolate(L_out, size = (m_new, m_new))
@@ -565,7 +516,12 @@ class ContactGNN(nn.Module):
         return L_out
 
 class SignNetGNN(nn.Module):
-    # Modified from https://github.com/cptq/SignNet-BasisNet/blob/main/Alchemy/sign_net/sign_net.py
+    '''
+    Modified from https://github.com/cptq/SignNet-BasisNet/blob/main/Alchemy/sign_net/sign_net.py.
+
+    Uses SignNet architecture to preprocess eigenvectors in sign-invariant fashion,
+    then include as additional input to GNN forward pass.
+    '''
     def __init__(self, node_feat, edge_feat, n_hid, nl_signnet,
                     nl_rho, k, ignore_eigval, gnn_model, ofile, verbose):
         super().__init__()
@@ -595,8 +551,11 @@ class SignNetGNN(nn.Module):
         return None
 
 class SignPlus(nn.Module):
-    # Modified from https://github.com/cptq/SignNet-BasisNet/blob/main/LearningFilters/signbasisnet.py
-    # negate v, do not negate x
+    '''
+    Modified from https://github.com/cptq/SignNet-BasisNet/blob/main/LearningFilters/signbasisnet.py
+
+    Run GNN forward pass twice. Ones for eigenvectors v and once for -v.
+    '''
     def __init__(self, model, k):
         super(SignPlus, self).__init__()
         self.model = model

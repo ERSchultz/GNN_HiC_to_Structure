@@ -19,8 +19,8 @@ import torch
 from pylib.Pysim import Pysim
 from pylib.utils.plotting_utils import plot_matrix
 from pylib.utils.utils import load_json, print_time
+
 from scripts.argparse_utils import finalize_opt, get_base_parser
-from scripts.clean_directories import clean_directories
 from scripts.data_generation.utils.setup_configs import setup_config
 from scripts.neural_nets.utils import get_dataset, load_saved_model
 
@@ -116,7 +116,7 @@ def run_GNN(model_path, argparse_path, m, dir, root, gnn_root, use_GPU=True, ver
             with torch.no_grad():
                 prediction = model(data, verbose=verbose)
         if torch.isnan(prediction).any():
-            clean_directories(GNN_path = opt.root)
+            shutil.rmtree(opt.root)
             raise Exception(f'nan in prediction: {opt.root}')
 
         U = prediction.cpu().detach().numpy().reshape((opt.m,opt.m))
@@ -134,7 +134,7 @@ def run_GNN(model_path, argparse_path, m, dir, root, gnn_root, use_GPU=True, ver
         model = model.cpu()
         del model; del data; del dataset; del prediction
         torch.cuda.empty_cache()
-        clean_directories(GNN_path = opt.root)
+        shutil.rmtree(opt.root)
 
         np.save(ofile, U)
     sys.stdout = stdout

@@ -1,4 +1,5 @@
 import math
+import os
 import os.path as osp
 
 import numpy as np
@@ -34,7 +35,7 @@ def load_saved_model(opt, model_path=None, verbose=True, throw=True):
             else:
                 return None, train_loss_arr, val_loss_arr
     else:
-        raise Exception('Model does not exist: {}'.format(model_name))
+        raise Exception(f'Model does not exist: {model_name}')
 
     return model, train_loss_arr, val_loss_arr
 
@@ -89,7 +90,6 @@ def get_files(dir_list, minSample=0, maxSample=float('inf'), verbose=False,
 
 def get_dataset(opt, verbose=True, samples=None, file_paths=None):
     opt.root = None
-    assert opt.GNN_mode
     if opt.split_sizes is not None and -1 not in opt.split_sizes:
         max_sample = np.sum(opt.split_sizes)
     elif opt.max_sample is not None:
@@ -120,10 +120,8 @@ def get_data_loaders(dataset, opt):
     if opt.verbose:
         print('dataset lengths: ', len(train_dataset), len(val_dataset), len(test_dataset))
 
-    if opt.GNN_mode:
-        dataloader_fn = torch_geometric.loader.DataLoader
-    else:
-        dataloader_fn = DataLoader
+
+    dataloader_fn = torch_geometric.loader.DataLoader
     train_dataloader = dataloader_fn(train_dataset, batch_size = opt.batch_size,
                                     shuffle = opt.shuffle, num_workers = opt.num_workers)
     if len(val_dataset) > 0:
@@ -166,16 +164,10 @@ def split_dataset(dataset, opt):
     if opt.random_split:
         return torch.utils.data.random_split(dataset, [opt.trainN, opt.valN, opt.testN],
                                             torch.Generator().manual_seed(opt.seed))
-    elif opt.GNN_mode:
+    else:
         test_dataset = dataset[:opt.testN]
         val_dataset = dataset[opt.testN:opt.testN+opt.valN]
         train_dataset = dataset[opt.testN+opt.valN:opt.testN+opt.valN+opt.trainN]
-    else:
-        # can't slice pytorch dataset, need to use Subset
-        test_dataset = Subset(dataset, range(opt.testN))
-        val_dataset = Subset(dataset, range(opt.testN, opt.testN+opt.valN))
-        train_dataset = Subset(dataset, range(opt.testN+opt.valN, opt.testN+opt.valN+opt.trainN))
-
 
     assert len(test_dataset) == opt.testN, f"{len(test_dataset)} != {opt.testN}"
     assert len(train_dataset) == opt.trainN, f"{len(train_dataset)} != {opt.trainN}"
@@ -186,7 +178,7 @@ def split_dataset(dataset, opt):
 def optimizer_to(optim, device = None):
     # https://discuss.pytorch.org/t/moving-optimizer-from-cpu-to-gpu/96068/2
     for param in optim.state.values():
-        # Not sure there are any global tensors in the state dict
+        # Not sure if there are any global tensors in the state dict
         if isinstance(param, torch.Tensor):
             if device is not None:
                 param.data = param.data.to(device)

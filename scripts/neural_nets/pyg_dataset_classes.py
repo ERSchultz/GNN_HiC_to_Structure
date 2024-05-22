@@ -60,7 +60,7 @@ class ContactsGraph(torch_geometric.data.Dataset):
         Inputs:
             file_paths: list of file_paths where data each sample is located
             scratch: path to scratch (used for root)
-            root_name: directory anme for saving/loading processed graphs
+            root_name: directory name for saving/loading processed graphs
             m: number of particles/beads
             y_preprocessing: type of contact map preprocessing ('diag', None, etc)
             kr: True to balance with knightRuiz algorithm

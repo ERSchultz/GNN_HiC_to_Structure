@@ -5,6 +5,7 @@ import os
 import os.path as osp
 import sys
 import time
+from shutil import rmtree
 
 import numpy as np
 import torch
@@ -155,16 +156,12 @@ def core_test_train(model, opt):
             file = opt.log_file)
     print(f'Final val loss: {val_loss_arr[-1]}\n', file = opt.log_file)
 
-    if opt.GNN_mode:
-        plotting_script(model, opt, train_loss_arr, val_loss_arr, dataset)
-    else:
-        plotting_script(model, opt, train_loss_arr, val_loss_arr)
-        # don't pass dataset, need to recreate it
+    plotting_script(model, opt, train_loss_arr, val_loss_arr, dataset)
 
     # cleanup
     if opt.root is not None and opt.delete_root:
         # opt.root is set in utils.get_dataset
-        clean_directories(GNN_path = opt.root, ofile = opt.log_file)
+        shutil.rmtree(opt.root)
     opt.log_file.close()
 
 def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = []):
@@ -239,11 +236,7 @@ def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = 
                 # print(f'yhat={yhat}, shape={yhat.shape}, '
                 #         f'min={torch.min(yhat).item()}, '
                 #         f'max={torch.max(yhat).item()}')
-            if 'seqs' in data._mapping:
-                seqs = torch.reshape(data.seqs, (-1, 10, opt.m)) # TODO hard-coded 10
-                loss = opt.criterion(yhat, y, seqs)
-            else:
-                loss = opt.criterion(yhat, y)
+            loss = opt.criterion(yhat, y)
             if opt.w_reg is not None:
                 if opt.w_reg == 'l1':
                     loss += opt.reg_lambda * torch.norm(model.sym(model.W), 1)
@@ -313,11 +306,7 @@ def test(loader, model, opt, toprint):
                 y = data.y
                 y = torch.reshape(y, (-1, opt.m))
             yhat = model(data)
-            if 'seqs' in data._mapping:
-                seqs = torch.reshape(data.seqs, (-1, 10, opt.m)) # TODO hard-coded 10
-                loss = opt.criterion(yhat, y, seqs)
-            else:
-                loss = opt.criterion(yhat, y)
+            loss = opt.criterion(yhat, y)
             loss_list.append(loss.item())
 
     avg_loss = np.mean(loss_list)

@@ -35,8 +35,6 @@ def get_base_parser():
     AC = ArgparseConverter()
 
     # GNN pre-processing args
-    parser.add_argument('--GNN_mode', type=AC.str2bool, default=False,
-                        help='True to use GNNs (uses pytorch_geometric in core_test_train)')
     parser.add_argument('--transforms', type=AC.str2list, default=[],
                         help='list of transforms to use for GNN')
     parser.add_argument('--pre_transforms', type=AC.str2list, default=[],
@@ -63,14 +61,8 @@ def get_base_parser():
                             '(root is the directory path - defined later)')
     parser.add_argument('--delete_root', type=AC.str2bool, default=True,
                         help='True to delete root directory after runtime')
-    parser.add_argument('--toxx', type=AC.str2bool, default=False,
-                        help='True if x should be converted to 2D image')
-    parser.add_argument('--toxx_mode', type=str, default='mean',
-                        help='mode for toxx (default mean)')
     parser.add_argument('--y_preprocessing', type=AC.str2None,
                         help='type of pre-processing for contact map')
-    parser.add_argument('--y_zero_diag_count', type=int, default=0,
-                        help='number of diagonals of y set to 0')
     parser.add_argument('--output_preprocesing', type=AC.str2None,
                         help='type of preprocessing for output')
     parser.add_argument('--kr', type=AC.str2bool,
@@ -79,8 +71,6 @@ def get_base_parser():
                         help='mean_filt: apply mean filter of width <mean_filt> (None to skip)')
     parser.add_argument('--rescale', type=AC.str2int,
                         help='rescale contact map by factor of <rescale> (None to skip)')
-    parser.add_argument('--gated', type=AC.str2bool, default=False,
-                        help='True to use gated connection')
     parser.add_argument('--preprocessing_norm', type=AC.str2None, default='batch',
                         help='type of [0,1] normalization for input data')
     parser.add_argument('--min_subtraction', type=AC.str2bool, default=True,
@@ -183,6 +173,8 @@ def get_base_parser():
                         help='default activation (not used for all networks)')
     parser.add_argument('--out_act', type=AC.str2None,
                         help='activation of final layer')
+    parser.add_argument('--gated', type=AC.str2bool, default=False,
+                        help='True to use gated connection')
     parser.add_argument('--training_norm', type=AC.str2None,
                         help='norm during training (batch, instance, or None)')
     parser.add_argument('--dropout', type=float, default=0.0,
@@ -191,17 +183,11 @@ def get_base_parser():
                         help='true to use parameter sharing in autoencoder blocks')
     parser.add_argument('--use_bias', type=AC.str2bool, default=True,
                         help='true to use bias (only implemented in ContactGNN and MLP)')
-    parser.add_argument('--input_L_to_D', type=AC.str2bool, default=False,
-                        help='True to use \hat{L} to help with estimation of D')
-    parser.add_argument('--input_L_to_D_mode', type=str, default='mean_dist',
-                        help='Mode for input_L_to_D')
-    parser.add_argument('--output_clip', type=AC.str2int,
-                        help='Clip output to range [-clip, clip]')
 
     # GNN model args
     parser.add_argument('--use_sign_net', type=AC.str2bool, default=False,
                         help='True to use sign net architecture')
-    parser.add_argument('--use_sign_plus', type=AC.str2bool, default=False,
+    parser.add_argument('--use_sign_plus', type=AC.str2bool, default=True,
                         help='True to use sign plus architecture')
     parser.add_argument('--message_passing', type=str, default='GCN',
                         help='type of message passing algorithm')
@@ -303,19 +289,14 @@ def finalize_opt(opt, parser, windows = False, debug = False):
     if opt.message_passing.lower() == 'gat':
         assert not opt.use_edge_weights
 
-    # check mode
-    if opt.model_type.startswith('GNNAutoencoder') or opt.model_type.startswith('ContactGNN'):
-        assert opt.GNN_mode, 'mode should be GNN'
-
     # configure GNN transforms
-    if opt.GNN_mode:
-        opt.node_feature_size = 0
-        if opt.use_node_features:
-            assert opt.k is not None
-            opt.node_feature_size += opt.k
-        else:
-            msg = f"need feature augmentation for id={opt.id}"
-            assert (len(opt.transforms) + len(opt.pre_transforms)) > 0, msg
+    opt.node_feature_size = 0
+    if opt.use_node_features:
+        assert opt.k is not None
+        opt.node_feature_size += opt.k
+    else:
+        msg = f"need feature augmentation for id={opt.id}"
+        assert (len(opt.transforms) + len(opt.pre_transforms)) > 0, msg
 
     if opt.rescale is not None:
         assert opt.rescale != 0, f'{opt.id}'
@@ -590,16 +571,6 @@ def process_loss(opt):
         elif loss == 'huber':
             criterion = F.huber_loss
             opt.channels = 1
-        elif loss == 'cross_entropy':
-            assert opt.out_act is None, "Cannot use output activation with cross entropy"
-            assert not opt.GNN_mode, 'cross_entropy not tested for GNN'
-            msg = 'must use percentile preprocessing with cross entropy'
-            assert opt.y_preprocessing == 'prcnt', msg
-            assert opt.preprocessing_norm is None, 'Cannot normalize with cross entropy'
-            opt.channels = opt.classes
-            opt.y_reshape = False
-            criterion = F.cross_entropy
-            opt.ydtype = torch.int64
         elif loss == 'BCE':
             assert opt.out_act is None, "Cannot use output activation with BCE"
             if opt.output_mode == 'contact':
@@ -673,23 +644,22 @@ def opt2list(opt):
         opt.milestones, opt.gamma, opt.loss,
         opt.k, opt.m, opt.seed, opt.act, opt.inner_act,
         opt.head_act, opt.out_act, opt.training_norm])
-    if opt.GNN_mode:
-        opt_list.extend([opt.use_node_features, opt.use_edge_weights, opt.use_edge_attr,
-                        opt.node_transforms, opt.edge_transforms,
-                        opt.sparsify_threshold, opt.sparsify_threshold_upper,
-                        opt.encoder_hidden_sizes_list,
-                        opt.edge_encoder_hidden_sizes_list,
-                        opt.input_L_to_D, opt.input_L_to_D_mode,
-                        opt.hidden_sizes_list, opt.message_passing,
-                        opt.update_hidden_sizes_list,
-                        f'{opt.head_architecture}+{opt.head_architecture_2}',
-                        opt.head_hidden_sizes_list])
-        if opt.use_sign_net:
-            opt_list.append('sign_net')
-        elif opt.use_sign_plus:
-            opt_list.append('sign_plus')
-        else:
-            opt_list.append(None)
+    # GNN options
+    opt_list.extend([opt.use_node_features, opt.use_edge_weights, opt.use_edge_attr,
+                    opt.node_transforms, opt.edge_transforms,
+                    opt.sparsify_threshold, opt.sparsify_threshold_upper,
+                    opt.encoder_hidden_sizes_list,
+                    opt.edge_encoder_hidden_sizes_list,
+                    opt.hidden_sizes_list, opt.message_passing,
+                    opt.update_hidden_sizes_list,
+                    f'{opt.head_architecture}+{opt.head_architecture_2}',
+                    opt.head_hidden_sizes_list])
+    if opt.use_sign_net:
+        opt_list.append('sign_net')
+    elif opt.use_sign_plus:
+        opt_list.append('sign_plus')
+    else:
+        opt_list.append(None)
 
     opt_list.append(opt.output_mode)
 
@@ -699,14 +669,14 @@ def save_opt(opt, ofile):
     if not osp.exists(ofile):
         with open(ofile, 'w', newline = '') as f:
             wr = csv.writer(f)
-            opt_list = get_opt_header(opt.model_type, opt.GNN_mode)
+            opt_list = get_opt_header(opt.model_type)
             wr.writerow(opt_list)
     with open(ofile, 'a') as f:
         wr = csv.writer(f)
         opt_list = opt2list(opt)
         wr.writerow(opt_list)
 
-def get_opt_header(model_type, GNN_mode):
+def get_opt_header(model_type):
     '''Return list of strings corresponding to variables in argparse.Namespace object.'''
     opt_list = ['model_type', 'id',  'dataset', 'pretrain_id', 'preprocessing_norm',
         'y_preprocessing', 'output_preprocesing', 'mean_filt', 'rescale',
@@ -715,14 +685,13 @@ def get_opt_header(model_type, GNN_mode):
         'gamma', 'loss', 'k', 'm',
         'seed', 'act', 'inner_act', 'head_act', 'out_act',
         'training_norm']
-    if GNN_mode:
-        opt_list.extend(['use_node_features','use_edge_weights', 'use_edge_attr',
-                        'node_transforms', 'edge_transforms',
-                        'sparsify_threshold', 'sparsify_threshold_upper',
-                        'encoder_hidden_sizes', 'edge_encoder_hidden_sizes',
-                        'input_L_to_D', 'input_L_to_D_mode',
-                        'hidden_sizes', 'message_passing', 'update_hidden_sizes',
-                        'head_architecture', 'head_hidden_sizes', 'sign_net'])
+    # GNN params
+    opt_list.extend(['use_node_features','use_edge_weights', 'use_edge_attr',
+                    'node_transforms', 'edge_transforms',
+                    'sparsify_threshold', 'sparsify_threshold_upper',
+                    'encoder_hidden_sizes', 'edge_encoder_hidden_sizes',
+                    'hidden_sizes', 'message_passing', 'update_hidden_sizes',
+                    'head_architecture', 'head_hidden_sizes', 'sign_net'])
 
     opt_list.append('output_mode')
 

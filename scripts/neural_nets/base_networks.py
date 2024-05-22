@@ -702,12 +702,12 @@ class FillDiagonalsFromArray(nn.Module):
         output += torch.transpose(torch.triu(output, 1), 1, 2)
         return output
 
-class FillDiagonalsFromArray2(nn.Module):
+class FillDiagonalsFromArray_CPU(nn.Module):
     '''
     Uses input rank 1 tensor to fill all diagonals of output rank 2 tensor.
 
     Ouput[i,j] = input[i-j]
-    This version only works on cpu
+    This version only works on cpu.
     '''
     def __init__(self):
         super(FillDiagonalsFromArray2, self).__init__()

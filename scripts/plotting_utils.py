@@ -24,7 +24,6 @@ from sklearn.metrics import mean_squared_error
 
 from .argparse_utils import (finalize_opt, get_base_parser, get_opt_header,
                              opt2list)
-from .clean_directories import clean_directories
 from .neural_nets.utils import get_data_loaders, get_dataset, load_saved_model
 
 
@@ -62,7 +61,7 @@ def plot_models_from_disk(ids, modelType='ContactGNNEnergy', use_id_for_label=Fa
 
 def plot_models_from_disk_inner(dirs, imagePath, opts, log_y=False, use_id_for_label=False):
     # check that only one param is different
-    opt_header = get_opt_header(opts[0].model_type, opts[0].GNN_mode)
+    opt_header = get_opt_header(opts[0].model_type)
     opt_lists = []
     for opt in opts:
         opt_lists.append(opt2list(opt))
@@ -292,7 +291,6 @@ def plotEnergyPredictions(val_dataloader, model, opt, count=5):
     for i, data in enumerate(val_dataloader):
         if i == count:
             break
-        assert opt.GNN_mode
         data = data.to(opt.device)
         y = data.energy
         y = torch.reshape(y, (-1, opt.m, opt.m))
@@ -514,10 +512,7 @@ def plotting_script(model, opt, train_loss_arr = None, val_loss_arr = None,
     if model is not None and dataset is None:
         dataset = get_dataset(opt, names = True, minmax = True, samples = samples)
         opt.valN = len(dataset)
-        if opt.GNN_mode:
-            dataloader_fn = torch_geometric.loader.DataLoader
-        else:
-            dataloader_fn = torch.utils.data.DataLoader
+        dataloader_fn = torch_geometric.loader.DataLoader
         val_dataloader = dataloader_fn(dataset, batch_size = 1, shuffle = False,
                                         num_workers = opt.num_workers)
     else:
