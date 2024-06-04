@@ -48,8 +48,8 @@ class ContactsGraph(torch_geometric.data.Dataset):
     # https://github.com/rusty1s/pytorch_geometric/issues/1511
     def __init__(self, file_paths, scratch, root_name,
                 m, y_preprocessing,
-                kr=False, rescale=None, mean_filt=None,
-                hic_normalization='mean',
+                kr=False, rescale=2, mean_filt=None,
+                hic_normalization='mean_fill',
                 use_node_features=True,
                 sparsify_threshold=None, sparsify_threshold_upper=None,
                 transform=None, pre_transform=None, output_mode='contact',
@@ -77,7 +77,7 @@ class ContactsGraph(torch_geometric.data.Dataset):
             ofile: where to print to if verbose == True
             verbose: True to print
             diag: True if y_diag should be calculated (used in some transforms)
-            corr: True if y_corr should be calcaulted (used in some transforms)
+            corr: True if y_corr should be calculated (used in some transforms)
             keep_zero_edges: True to keep edges with 0 weight
             output_preprocesing: Type of preprocessing for prediction target
         '''

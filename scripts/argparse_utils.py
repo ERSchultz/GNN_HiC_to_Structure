@@ -508,7 +508,8 @@ def process_transforms(opt):
 
             transform = GeneticDistance(convert_to_attr = opt.use_edge_attr,
                                         log = log, log10 = log10, norm = norm,
-                                        positional_encoding = pos, positional_encoding_d = d)
+                                        positional_encoding = pos,
+                                        positional_encoding_d = d)
             opt.edge_transforms.append(transform)
         elif t_str[0] == 'geneticposition':
             center = False

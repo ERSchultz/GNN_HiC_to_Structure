@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     args = generate_synthetic_parameters.getArgs() # default args
     args.dataset = 'dataset_synthetic'
-    args.exp_dataset = 'dataset_all_files_512'
+    args.exp_dataset = 'dataset_all_files_50k_512'
     args.samples = 5000 # number of samples to generate
     args.k = 10
     args.m = 512

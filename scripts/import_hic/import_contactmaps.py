@@ -43,6 +43,7 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
     basepairs = f"{chrom}:{start}:{end}"
     print(basepairs, odir)
     result = hicstraw.straw("observed", norm, hic_filename, basepairs, basepairs, "BP", resolution)
+    hic = hicstraw.HiCFile(hic_filename)
 
     m = int((end - start) / resolution)
     hic_arr = np.zeros((m, m))
@@ -123,8 +124,8 @@ def split(in_dataset, out_dataset, m, chroms=range(1,23), start_index=1,
         scale (float or None): Re-scales first off-diagonal of contact map to
                     have value <scale? (None to not scale)
     '''
-    data_dir = osp.join('/home/erschultz', in_dataset)
-    out_data_dir = osp.join('/home/erschultz', out_dataset)
+    data_dir = osp.join(ROOT, in_dataset)
+    out_data_dir = osp.join(ROOT, out_dataset)
     os.makedirs(out_data_dir, exist_ok=True)
     samples_dir = osp.join(out_data_dir, 'samples')
     os.makedirs(samples_dir, exist_ok=True)
@@ -183,9 +184,9 @@ def split(in_dataset, out_dataset, m, chroms=range(1,23), start_index=1,
                 end = start + m
 
 def main():
-    entire_chromosomes(ALL_FILES_in_situ, 'dataset_all_files')
-    split('dataset_all_files', 'dataset_all_files_512', 512,
-            scale=1e-1)
+    entire_chromosomes(ALL_FILES_in_situ, 'dataset_all_files_50k',
+                    resolution=50_000, jobs=15)
+    split('dataset_all_files_50k', 'dataset_all_files_50k_512', 512, scale=1e-1)
 
 if __name__ == '__main__':
     main()

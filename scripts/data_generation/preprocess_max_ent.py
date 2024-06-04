@@ -503,10 +503,10 @@ def chis_eigspace_distribution(dataset, b, phi, v, k, ar, plot=True,
     return L_list, U_list, D_list, chi_ij_list
 
 def main():
-    calculate_chis_in_eigspace('dataset_all_files_512', b=200, phi=None, v=8, k=10, ar=1.5, cell_line='imr90')
-    curve_fit_diag_chi('dataset_all_files_512', b=200, phi=None, v=8, k=10, ar=1.5,
+    calculate_chis_in_eigspace('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5, cell_line='imr90')
+    curve_fit_diag_chi('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5,
                             plot=True, cell_line='imr90')
-    chis_eigspace_distribution('dataset_all_files_512', b=200, phi=None, v=8, k=10, ar=1.5, plot=True,
+    chis_eigspace_distribution('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5, plot=True,
                 cell_line='imr90')
 
 if __name__ == '__main__':

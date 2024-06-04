@@ -14,7 +14,6 @@ import torch.optim as optim
 from pylib.utils.utils import print_time
 
 from scripts.argparse_utils import argparse_setup, save_args
-from scripts.clean_directories import clean_directories
 from scripts.neural_nets.networks import get_model
 from scripts.neural_nets.utils import (get_data_loaders, get_dataset,
                                        optimizer_to)
