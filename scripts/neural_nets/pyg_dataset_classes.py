@@ -55,7 +55,8 @@ class ContactsGraph(torch_geometric.data.Dataset):
                 transform=None, pre_transform=None, output_mode='contact',
                 ofile=sys.stdout, verbose=True,
                 diag=False, corr=False,
-                keep_zero_edges=False, output_preprocesing=None):
+                keep_zero_edges=False,
+                output_preprocesing=None):
         '''
         Inputs:
             file_paths: list of file_paths where data each sample is located
@@ -267,14 +268,11 @@ class ContactsGraph(torch_geometric.data.Dataset):
         return torch.sum(self.contact_map, axis = 1)
 
     def generate_edge_index(self):
-        adj = torch.clone(self.contact_map)
+        adj = torch.clone(self.contact_map) # temporary variable
         if self.keep_zero_edges:
             adj[adj == 0] = 1 # first set zero's to some nonzero value
-            adj = torch.nan_to_num(adj) # then replace nans with zero
-            edge_index = adj.nonzero().t() # ignore remaining zeros
-        else:
-            adj = torch.nan_to_num(adj) # replace nans with zero
-            edge_index = adj.nonzero().t() # ignore all zeros
+        adj = torch.nan_to_num(adj) # replace nans with zero
+        edge_index = adj.nonzero().t() # use all non-zero entries as edges
         self.num_edges_list.append(edge_index.shape[1])
 
         return edge_index
