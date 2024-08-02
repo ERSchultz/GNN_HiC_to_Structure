@@ -38,9 +38,9 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
         start: start basepair
         end: end basepair
         resolution: Hi-C resolution in basepairs
-        norm: Hi-C normlalization method (e.g. KR, NONE)
+        norm: Hi-C normalization method (e.g. KR, NONE)
     '''
-    basepairs = f"{chrom}:{start}:{end}"
+    basepairs = f"chr{chrom}:{start}:{end}"
     print(basepairs, odir)
     result = hicstraw.straw("observed", norm, hic_filename, basepairs, basepairs, "BP", resolution)
     hic = hicstraw.HiCFile(hic_filename)
@@ -76,6 +76,8 @@ def import_contactmap_straw(odir, hic_filename, chrom, start,
 
 def entire_chromosomes(hic_files, dataset, resolution=50000, ref_genome='hg19',
                     chroms=range(1,23), jobs=15, plot=False):
+    if isinstance(hic_files, str):
+        hic_files = [hic_files]
     data_folder = osp.join(ROOT, dataset)
     os.makedirs(data_folder, exist_ok = True)
 
@@ -95,8 +97,12 @@ def entire_chromosomes(hic_files, dataset, resolution=50000, ref_genome='hg19',
             mapping.append((sample_folder, filename, chromosome, start,
                             end, resolution))
 
-    with multiprocessing.Pool(jobs) as p:
-        p.starmap(import_contactmap_straw, mapping)
+    if jobs == 1:
+        for args in mapping:
+            import_contactmap_straw(*args)
+    else:
+        with multiprocessing.Pool(jobs) as p:
+            p.starmap(import_contactmap_straw, mapping)
 
     if plot:
         # plotting is slow and not parallel-ized
@@ -184,9 +190,19 @@ def split(in_dataset, out_dataset, m, chroms=range(1,23), start_index=1,
                 end = start + m
 
 def main():
+    # entire_chromosomes(HCT116_RAD21KO, 'dataset_HCT116_RAD21_KO',
+    #                 resolution=100_000, jobs=2)
+    # split('dataset_HCT116_RAD21_KO', 'dataset_HCT116_RAlD21_KO', 1024, scale=1e-1)
     entire_chromosomes(ALL_FILES_in_situ, 'dataset_all_files_50k',
-                    resolution=50_000, jobs=15)
+                    resolution=50_000, jobs=1)
     split('dataset_all_files_50k', 'dataset_all_files_50k_512', 512, scale=1e-1)
+
+    entire_chromosomes(MOUSE, 'dataset_mouse_50k',
+                    resolution=50_000, jobs=1, chroms=range(1,20), ref_genome='mm10')
+    split('dataset_mouse_50k', 'dataset_mouse_50k_512', 512, scale=1e-1, chroms=range(1,20), ref_genome='mm10')
+    # entire_chromosomes('/media/erschultz/1814ae69-5346-45a6-b219-f77f6739171c/home/erschultz/ENCFF718AWL.hic',
+    #                 '/media/erschultz/1814ae69-5346-45a6-b219-f77f6739171c/home/erschultz/ultra_deep_hic',
+    #                 resolution=1_000, jobs=1)
 
 if __name__ == '__main__':
     main()

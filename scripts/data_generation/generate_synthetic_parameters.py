@@ -15,7 +15,7 @@ import numpy as np
 from pylib.utils.energy_utils import calculate_diag_chi_step
 from pylib.utils.utils import LETTERS, load_import_log, triu_to_full
 from sklearn.neighbors import KernelDensity
-from utils.utils import get_samples
+from utils.utils import ROOT, get_samples
 
 
 def getArgs():
@@ -268,6 +268,16 @@ class DatasetGenerator():
 def main(args=None):
     if args is None:
         args = getArgs()
+        args.dataset = 'dataset_08_02_24_imr90'
+        args.exp_dataset = 'dataset_12_06_23-small'
+        args.samples = 10_000 # number of samples to generate
+        args.k = 10
+        args.m = 512
+        args.b=200; args.v=8; args.ar=1.5
+        args.cell_line='imr90'
+        args.root = ROOT
+        args.data_dir = "/project/depablo/erschultz/"
+
     generator = DatasetGenerator(args)
     generator.get_dataset()
 

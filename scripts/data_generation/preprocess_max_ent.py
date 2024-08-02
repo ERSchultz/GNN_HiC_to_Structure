@@ -253,11 +253,17 @@ def chis_eigspace_distribution(dataset, b, phi, v, k, ar, plot=True,
     the chis in the the eigensapce of the L matrix).
     '''
     # distribution of plaid params
-    if cell_line is not None:
-        samples, cell_lines = get_samples(dataset, True, return_cell_lines=True,
-                                        filter_cell_lines=set([cell_line]))
-    else:
+    if cell_line is None:
         samples, cell_lines = get_samples(dataset, True, return_cell_lines=True)
+    elif isinstance(cell_line, str):
+        samples, cell_lines = get_samples(dataset, True, return_cell_lines=True,
+                                    filter_cell_lines=set([cell_line]))
+    elif isinstance(cell_line, list):
+        samples, cell_lines = get_samples(dataset, True, return_cell_lines=True,
+                                    filter_cell_lines=set(cell_line))
+    else:
+        raise Exception(f'Cell lines unrecognized: {cell_line}')
+
     print(len(samples))
     N = len(samples)
     data_dir = osp.join(ROOT, dataset)
@@ -503,11 +509,14 @@ def chis_eigspace_distribution(dataset, b, phi, v, k, ar, plot=True,
     return L_list, U_list, D_list, chi_ij_list
 
 def main():
-    calculate_chis_in_eigspace('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5, cell_line='imr90')
-    curve_fit_diag_chi('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5,
-                            plot=True, cell_line='imr90')
-    chis_eigspace_distribution('dataset_all_files_50k_512', b=200, phi=None, v=8, k=10, ar=1.5, plot=True,
-                cell_line='imr90')
+    cell_line = ['gm12878', 'imr90', 'hap1', 'huvec', 'hmec']
+    dataset = 'dataset_12_06_23'
+    # dataset = 'dataset_all_files_50k_512'
+    # calculate_chis_in_eigspace(dataset, b=200, phi=None, v=8, k=10, ar=1.5, cell_line=cell_line)
+    # curve_fit_diag_chi(dataset, b=200, phi=None, v=8, k=10, ar=1.5,
+    #                         plot=True, cell_line=cell_line)
+    chis_eigspace_distribution(dataset, b=200, phi=None, v=8, k=10, ar=1.5, plot=True,
+                cell_line=cell_line)
 
 if __name__ == '__main__':
     main()

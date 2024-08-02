@@ -32,8 +32,10 @@ ALL_FILES = [
             "https://hicfiles.s3.amazonaws.com/hiseq/kbm7/in-situ/combined.hic",
             "https://hicfiles.s3.amazonaws.com/hiseq/huvec/in-situ/combined.hic",
             "https://hicfiles.s3.amazonaws.com/hiseq/hela/in-situ/combined.hic",
-            "https://hicfiles.s3.amazonaws.com/hiseq/hap1/in-situ/combined.hic"
+            "https://hicfiles.s3.amazonaws.com/hiseq/hap1/in-situ/combined.hic",
             ]
+
+MOUSE = "https://hicfiles.s3.amazonaws.com/hiseq/ch12-lx-b-lymphoblasts/in-situ/combined.hic"
 
 HCT116_RAD21KO = 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE104nnn/GSE104333/suppl/GSE104333_Rao-2017-treated_6hr_combined_30.hic'
 
