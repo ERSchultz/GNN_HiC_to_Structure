@@ -1,3 +1,6 @@
+# Chromatin Structures from Integrated AI and Polymer Physics Model
+[https://github.com/ERSchultz](https://doi.org/10.1101/2024.11.27.624905)
+
 ## Installation and dependencies
 
 We include a bash script (bin/create_environment.sh) to create an anaconda environment and install all necessary dependencies. A reference environment file is provided in environment.yml. # TODO clean up environment.
