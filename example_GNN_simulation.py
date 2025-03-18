@@ -19,13 +19,13 @@ import torch
 from pylib.Pysim import Pysim
 from pylib.utils.plotting_utils import plot_matrix
 from pylib.utils.utils import load_json, print_time
-
 from scripts.argparse_utils import finalize_opt, get_base_parser
 from scripts.data_generation.utils.setup_configs import setup_config
 from scripts.neural_nets.utils import get_dataset, load_saved_model
 
 
 def setup_example():
+    '''Preprocess files from example directory.'''
     hic = ss.load_npz('example/hic.npz')
     hic_arr = hic.toarray()
     np.save('example/hic.npy', hic_arr)
@@ -33,15 +33,18 @@ def setup_example():
         # maximum of color bar = mean(hic)
 
 def setup_simulation():
+    '''Run all setup needed to run simulation'''
     dir = 'example'
     root, config = setup_config(dir)
 
+    # get hic data as array
     hic_file = osp.join(dir, 'hic.npy')
     if not osp.exists(hic_file):
         raise Exception(f'files does not exist: {hic_file}')
     hic = np.load(hic_file).astype(np.float64)
     m = len(hic)
 
+    # finalize config
     config['nspecies'] = 0
     config['load_bead_types'] = False
     config['lmatrix_on'] = False
@@ -52,6 +55,7 @@ def setup_simulation():
     config['nbeads'] = m
     config["umatrix_filename"] = "umatrix.txt"
 
+    # set output directory
     gnn_root = f'{root}-GNN'
 
     return dir, root, gnn_root, config, hic
@@ -164,10 +168,12 @@ def main():
         # return
     os.mkdir(gnn_root, mode=0o755)
 
+    # use GNN to estimate U matrix
     U = run_GNN(GNN_model, argparse_file, m, dir, root, gnn_root, use_GPU=False)
     if U is None:
         return
 
+    # run simulation
     stdout = sys.stdout
     with open(osp.join(gnn_root, 'log.log'), 'w') as sys.stdout:
         sim = Pysim(gnn_root, config, None, hic, randomize_seed = True,
@@ -175,7 +181,7 @@ def main():
         t = sim.run_eq(config['nSweeps_eq'], config['nSweeps'], 1)
         print(f'Simulation took {np.round(t, 2)} seconds')
 
-        analysis.main_no_maxent(dir=sim.root)
+        analysis.main_no_maxent(dir=sim.root) # validation figures and analysis
     sys.stdout = stdout
 
 if __name__ == '__main__':

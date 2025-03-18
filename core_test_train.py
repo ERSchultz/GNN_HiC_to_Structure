@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from pylib.utils.utils import print_time
-
 from scripts.argparse_utils import argparse_setup, save_args
 from scripts.neural_nets.networks import get_model
 from scripts.neural_nets.utils import (get_data_loaders, get_dataset,
@@ -24,12 +23,18 @@ torch.autograd.set_detect_anomaly(True)
 
 
 def main():
+    '''Load parameters from command line and run core_test_train'''
     opt = argparse_setup()
     model = get_model(opt)
 
     core_test_train(model, opt)
 
 def core_test_train(model, opt):
+    '''Complete test/train procedure
+    Inputs:
+        model: pyTorch neural network module
+        opt: options from argparse
+    '''
     print(opt, end = '\n\n', file = opt.log_file)
     print(opt)
     print(opt.ofile_folder, end = '\n\n')
@@ -126,6 +131,7 @@ def core_test_train(model, opt):
 
     t0 = time.time()
     print("#### TRAINING/VALIDATION ####", file = opt.log_file)
+    # train model
     train(train_dataloader, val_dataloader, model, opt, train_loss_arr, val_loss_arr)
 
     tot_pars = 0
@@ -155,6 +161,7 @@ def core_test_train(model, opt):
             file = opt.log_file)
     print(f'Final val loss: {val_loss_arr[-1]}\n', file = opt.log_file)
 
+    # plot validation figures
     plotting_script(model, opt, train_loss_arr, val_loss_arr, dataset)
 
     # cleanup
@@ -164,6 +171,8 @@ def core_test_train(model, opt):
     opt.log_file.close()
 
 def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = []):
+    '''Run model in train mode for all epochs.'''
+
     def save(early_stop=False):
         if opt.use_parallel:
             model_state = model.module.state_dict()
@@ -207,34 +216,10 @@ def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = 
             else:
                 y = data.y
                 y = torch.reshape(y, (-1, opt.m))
-            if opt.verbose:
-                # print(f'x: shape={data.x.shape}, '
-                #         f'min={torch.min(data.x).item()}, '
-                #         f'max={torch.max(data.x).item()}')
-                # if data.edge_attr is not None:
-                #     print(f'edge_attr: '
-                #             f'shape={data.edge_attr.shape}, '
-                #             f'min={torch.min(data.edge_attr).item()}, '
-                #             f'max={torch.max(data.edge_attr).item()}')
-                # if 'pos_edge_attr' in data._mapping:
-                #     print(f'pos_edge_attr={data.pos_edge_attr}, '
-                #             f'shape={data.pos_edge_attr.shape}, '
-                #             f'min={torch.min(data.pos_edge_attr).item()}, '
-                #             f'max={torch.max(data.pos_edge_attr).item()}')
-                #     print(f'neg_edge_attr={data.neg_edge_attr}, '
-                #             f'shape={data.neg_edge_attr.shape}, '
-                #             f'min={torch.min(data.neg_edge_attr).item()}, '
-                #             f'max={torch.max(data.neg_edge_attr).item()}')
-                # print(f'y: shape={y.shape}, min={torch.min(y).item()}, '
-                #         f'max={torch.max(y).item()}')
-                t0 = time.time()
             yhat = model(data)
             if opt.verbose:
                 tf = time.time()
                 print_time(t0, tf, 'forward')
-                # print(f'yhat={yhat}, shape={yhat.shape}, '
-                #         f'min={torch.min(yhat).item()}, '
-                #         f'max={torch.max(yhat).item()}')
             loss = opt.criterion(yhat, y)
             if opt.w_reg is not None:
                 if opt.w_reg == 'l1':
@@ -243,12 +228,6 @@ def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = 
                     loss += opt.reg_lambda * torch.norm(model.sym(model.W), 2) ** 2
             avg_loss += loss.item()
             loss.backward()
-            # if opt.verbose:
-            #     for k,p in model.named_parameters():
-            #         print(f'{k}: shape={p.shape}, min={torch.min(p).item()}, '
-            #                 f'max={torch.max(p).item()}')
-            #         print(f'\tgrad: shape={p.grad.shape}, min={torch.min(p.grad).item()}, '
-            #                 f'max={torch.max(p.grad).item()}')
             if opt.grad_clip is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)
             opt.optimizer.step()
@@ -289,6 +268,7 @@ def train(train_loader, val_dataloader, model, opt, train_loss = [], val_loss = 
     return train_loss, val_loss
 
 def test(loader, model, opt, toprint):
+    '''Run model in eval mode for a single epoch.'''
     assert loader is not None, 'loader is None - check train/val/test split'
     model.eval()
     loss_list = []

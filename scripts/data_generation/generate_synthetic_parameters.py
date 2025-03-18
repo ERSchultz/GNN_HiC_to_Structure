@@ -268,15 +268,15 @@ class DatasetGenerator():
 def main(args=None):
     if args is None:
         args = getArgs()
-        args.dataset = 'dataset_08_02_24_imr90'
+        args.dataset = 'dataset_08_02_24_imr90_test'
         args.exp_dataset = 'dataset_12_06_23-small'
-        args.samples = 10_000 # number of samples to generate
+        args.samples = 10 # number of samples to generate
         args.k = 10
         args.m = 512
         args.b=200; args.v=8; args.ar=1.5
         args.cell_line='imr90'
         args.root = ROOT
-        args.data_dir = "/project/depablo/erschultz/"
+        args.data_dir = "/home/erschultz/"
 
     generator = DatasetGenerator(args)
     generator.get_dataset()
