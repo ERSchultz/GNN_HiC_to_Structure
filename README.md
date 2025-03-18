@@ -1,6 +1,11 @@
+# [Chromatin Structures from Integrated AI and Polymer Physics Model](https://doi.org/10.1101/2024.11.27.624905)
+
+![test](https://github.com/ERSchultz/GNN_HiC_to_Structure/blob/main/overview.png)
+
 ## Installation and dependencies
 
-We include a bash script (bin/create_environment.sh) to create an anaconda environment and install all necessary dependencies. A reference environment file is provided in environment.yml. # TODO clean up environment.
+
+We include a bash script (bin/create_environment.sh) to create an anaconda environment and install all necessary dependencies. A reference environment file is provided in environment.yml. 
 
 We also require https://github.com/SorenKyhl/TICG-chromatin (master branch) in order to run the simulation engine and for some utility functions.
 
